@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Lab: Airport Management System (Pro)</title>
+    <!-- Load sql.js via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --panel-bg: #ffffff;
+            --border: #cbd5e1;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --text: #1e293b;
+            --code-bg: #1e1e1e;
+            --code-text: #d4d4d4;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; flex-direction: row; height: 100vh; background-color: var(--bg-color); color: var(--text); overflow: hidden; }
+        
+        /* Layout */
+        #left-panel { 
+            width: 25%; /* Default ~1/4th */
+            min-width: 15%; 
+            max-width: 50%; 
+            resize: horizontal; 
+            overflow-y: auto; 
+            background: var(--panel-bg); 
+            border-right: 3px solid var(--border); 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        #center-panel { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            min-width: 0; /* Prevents flexbox blowout */
+        }
+        #right-panel {
+            width: 20%;
+            min-width: 200px;
+            background: var(--panel-bg);
+            border-left: 2px solid var(--border);
+            overflow-y: auto;
+            padding: 15px;
+            font-size: 0.9rem;
+        }
+
+        #editor-pane { height: 45%; border-bottom: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; }
+        #results-pane { height: 55%; background: var(--panel-bg); overflow: auto; padding: 15px; }
+        
+        /* Typography & Components */
+        h1 { font-size: 1.3rem; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 20px; }
+        h2 { font-size: 1.1rem; margin-top: 20px; color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        h3 { font-size: 0.95rem; color: #475569; margin-top: 15px; font-weight: 600; }
+        p, ul { margin-bottom: 10px; line-height: 1.4; font-size: 0.85rem; }
+        code { background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; color: #be123c; font-size: 0.9em; }
+        
+        /* Interactive Elements */
+        textarea { width: 100%; flex-grow: 1; background: var(--code-bg); color: var(--code-text); font-family: 'Courier New', Courier, monospace; font-size: 1rem; padding: 15px; border: none; resize: none; outline: none; }
+        .controls { padding: 10px; background: #f1f5f9; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--border); }
+        button { background: var(--primary); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 0.85rem; }
+        button:hover { background: var(--primary-hover); }
+        button.secondary { background: #64748b; }
+        button.secondary:hover { background: #475569; }
+        button.snippet-btn { background: #10b981; font-size: 0.7rem; padding: 4px 8px; margin-bottom: 10px; border-radius: 3px; }
+        button.snippet-btn:hover { background: #059669; }
+        
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+        th, td { padding: 8px; text-align: left; border: 1px solid var(--border); }
+        th { background: var(--primary); color: white; position: sticky; top: 0; }
+        tr:nth-child(even) { background: #f8fafc; }
+        
+        /* Status Alerts */
+        #status { padding: 10px; margin-bottom: 10px; border-radius: 4px; font-weight: bold; display: none; font-size: 0.9rem; }
+        .error { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; display: block !important; }
+        .success { background: #d1fae5; color: #047857; border: 1px solid #34d399; display: block !important; }
+        
+        .task-box { background: #f8fafc; border-left: 4px solid var(--primary); padding: 10px 15px; margin-bottom: 15px; border-radius: 0 4px 4px 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+        /* Schema Explorer Styles */
+        details { margin-bottom: 8px; }
+        summary { cursor: pointer; padding: 4px; background: #f1f5f9; border-radius: 4px; font-weight: 600; user-select: none; }
+        summary:hover { background: #e2e8f0; }
+        .schema-list { list-style-type: none; padding-left: 20px; margin-top: 5px; }
+        .schema-list li { margin-bottom: 3px; font-family: monospace; font-size: 0.85rem; color: #334155; }
+        .schema-type { color: #94a3b8; font-size: 0.75rem; float: right; }
+    </style>
+</head>
+<body>
+
+    <!-- LEFT PANEL: Tasks -->
+    <div id="left-panel">
+        <h1>✈️ SQL Lab@ULaw: Tasks</h1>
+        <p>Please complete the 50 tasks below.</p>
+
+        <!-- PART 1 -->
+        <div class="task-box">
+            <h2>Part 1: Selection & Filtering (1-10)</h2>
+            <h3>1. Basic Select</h3> <p>Get all data from the <code>Airports</code> table.</p> <button class="snippet-btn" onclick="loadSnippet('t1')">Hint</button>
+            <h3>2. Filtering (WHERE)</h3> <p>Find passengers with the last name 'Smith'.</p> <button class="snippet-btn" onclick="loadSnippet('t2')">Hint</button>
+            <h3>3. Subquery</h3> <p>Find all flights departing from 'JFK' using a subquery.</p> <button class="snippet-btn" onclick="loadSnippet('t3')">Hint</button>
+            <h3>4. Projection</h3> <p>Get only `FirstName`, `LastName`, `Email` of passengers.</p> <button class="snippet-btn" onclick="loadSnippet('t4')">Hint</button>
+            <h3>5. Aliases</h3> <p>Rename output columns to "First Name" and "Last Name".</p> <button class="snippet-btn" onclick="loadSnippet('t5')">Hint</button>
+            <h3>6. Multiple Conditions (AND/OR)</h3> <p>Find flights scheduled to depart on '2024-07-29' OR '2024-07-30'.</p> <button class="snippet-btn" onclick="loadSnippet('t6')">Hint</button>
+            <h3>7. Pattern Matching (LIKE)</h3> <p>Find passengers whose email ends with '@email.com'.</p> <button class="snippet-btn" onclick="loadSnippet('t7')">Hint</button>
+            <h3>8. Sorting (ORDER BY)</h3> <p>List all Airplanes sorted by `ManufactureYear` descending.</p> <button class="snippet-btn" onclick="loadSnippet('t8')">Hint</button>
+            <h3>9. Limit Results</h3> <p>Find the 3 newest airplanes.</p> <button class="snippet-btn" onclick="loadSnippet('t9')">Hint</button>
+            <h3>10. CASE Statements</h3> <p>Classify airplanes: Capacity < 200 = 'Small', else 'Large'.</p> <button class="snippet-btn" onclick="loadSnippet('t10')">Hint</button>
+        </div>
+
+        <!-- PART 2 -->
+        <div class="task-box">
+            <h2>Part 2: Joins (11-20)</h2>
+            <h3>11. Inner Join</h3> <p>Join flights to airports to get departure airport names.</p> <button class="snippet-btn" onclick="loadSnippet('t11')">Hint</button>
+            <h3>12. 3-Table Join</h3> <p>List passengers on flight 'UA100' (join CheckIns, Passengers, Flights).</p> <button class="snippet-btn" onclick="loadSnippet('t12')">Hint</button>
+            <h3>13. Filtered Join</h3> <p>Find Duty-Free shops at Heathrow (LHR).</p> <button class="snippet-btn" onclick="loadSnippet('t13')">Hint</button>
+            <h3>14. Left Join</h3> <p>List all airplanes and any flights they are assigned to.</p> <button class="snippet-btn" onclick="loadSnippet('t14')">Hint</button>
+            <h3>15. Crew Manifest</h3> <p>Find names and roles of crew on flight 'UA100'.</p> <button class="snippet-btn" onclick="loadSnippet('t15')">Hint</button>
+            <h3>16. Airport Staff</h3> <p>Find Baggage Handlers working at JFK.</p> <button class="snippet-btn" onclick="loadSnippet('t16')">Hint</button>
+            <h3>17. High Security</h3> <p>Find 'High' security staff at LHR.</p> <button class="snippet-btn" onclick="loadSnippet('t17')">Hint</button>
+            <h3>18. Multi-Airport Join</h3> <p>List Flights with BOTH Departure City and Arrival City names.</p> <button class="snippet-btn" onclick="loadSnippet('t18')">Hint</button>
+            <h3>19. 4-Table Join</h3> <p>Find passenger names and the Airplane Model they are flying on.</p> <button class="snippet-btn" onclick="loadSnippet('t19')">Hint</button>
+            <h3>20. Staff & Retail</h3> <p>List retail shops located in the same airport as Baggage Handler 'Mike Tyson'.</p> <button class="snippet-btn" onclick="loadSnippet('t20')">Hint</button>
+        </div>
+
+        <!-- PART 3 -->
+        <div class="task-box">
+            <h2>Part 3: Aggregation (21-30)</h2>
+            <h3>21. Count (GROUP BY)</h3> <p>How many flights does each airplane TailNumber operate?</p> <button class="snippet-btn" onclick="loadSnippet('t21')">Hint</button>
+            <h3>22. Average (AVG)</h3> <p>Average airplane capacity per Airline.</p> <button class="snippet-btn" onclick="loadSnippet('t22')">Hint</button>
+            <h3>23. Total (SUM)</h3> <p>Total baggage weight currently checked in for flight 'UA100'.</p> <button class="snippet-btn" onclick="loadSnippet('t23')">Hint</button>
+            <h3>24. Filtering Aggregates (HAVING)</h3> <p>Avg baggage weight per flight, but ONLY if avg > 15kg.</p> <button class="snippet-btn" onclick="loadSnippet('t24')">Hint</button>
+            <h3>25. Max Value</h3> <p>Find the airport with the most 'High' security staff.</p> <button class="snippet-btn" onclick="loadSnippet('t25')">Hint</button>
+            <h3>26. Count Distinct</h3> <p>How many distinct countries do we have airports in?</p> <button class="snippet-btn" onclick="loadSnippet('t26')">Hint</button>
+            <h3>27. Grouping by Enum</h3> <p>Count of retail establishments per `Type`.</p> <button class="snippet-btn" onclick="loadSnippet('t27')">Hint</button>
+            <h3>28. Min & Max</h3> <p>Find the smallest and largest airplane capacities.</p> <button class="snippet-btn" onclick="loadSnippet('t28')">Hint</button>
+            <h3>29. Aggregation across Joins</h3> <p>Total baggage weight transported by 'United Airlines'.</p> <button class="snippet-btn" onclick="loadSnippet('t29')">Hint</button>
+            <h3>30. HAVING with Count</h3> <p>Airlines that own more than 1 airplane.</p> <button class="snippet-btn" onclick="loadSnippet('t30')">Hint</button>
+        </div>
+
+        <!-- PART 4 -->
+        <div class="task-box">
+            <h2>Part 4: Data Modification (31-40)</h2>
+            <h3>31. INSERT</h3> <p>Add passenger 'Daniel Lee' to the database.</p> <button class="snippet-btn" onclick="loadSnippet('t31')">Hint</button>
+            <h3>32. UPDATE</h3> <p>Mark FlightID 4 as 'Delayed'.</p> <button class="snippet-btn" onclick="loadSnippet('t32')">Hint</button>
+            <h3>33. DELETE</h3> <p>Delete the security staff member with EmployeeID 'SEC008'.</p> <button class="snippet-btn" onclick="loadSnippet('t33')">Hint</button>
+            <h3>34. ALTER Table</h3> <p>Add `Terminal` and `Gate` columns to Flights.</p> <button class="snippet-btn" onclick="loadSnippet('t34')">Hint</button>
+            <h3>35. Bulk UPDATE</h3> <p>Set Terminal 'T1' and Gate 'A01' for Flight 'UA100'.</p> <button class="snippet-btn" onclick="loadSnippet('t35')">Hint</button>
+            <h3>36. Insert Reference</h3> <p>Insert 'SFO' (San Francisco) into Airports.</p> <button class="snippet-btn" onclick="loadSnippet('t36')">Hint</button>
+            <h3>37. Update Identifier</h3> <p>Change Baggage Handler 'BH001' to 'BH999'.</p> <button class="snippet-btn" onclick="loadSnippet('t37')">Hint</button>
+            <h3>38. Delete Check-in</h3> <p>Remove CheckInID 1 (passenger cancelled).</p> <button class="snippet-btn" onclick="loadSnippet('t38')">Hint</button>
+            <h3>39. Mass Update</h3> <p>Change all 'Scheduled' flights on '2024-07-29' to 'Delayed'.</p> <button class="snippet-btn" onclick="loadSnippet('t39')">Hint</button>
+            <h3>40. Alter (Add Date)</h3> <p>Add `DateOfBirth` column to Passengers.</p> <button class="snippet-btn" onclick="loadSnippet('t40')">Hint</button>
+        </div>
+
+        <!-- PART 5 -->
+        <div class="task-box">
+            <h2>Part 5: Views (41-50)</h2>
+            <h3>41. Create View</h3> <p>Create <code>border_control</code> view (Name, Passport only).</p> <button class="snippet-btn" onclick="loadSnippet('t41')">Hint</button>
+            <h3>42. Departure Board View</h3> <p>Create view: FlightNumber, Destination City, Status.</p> <button class="snippet-btn" onclick="loadSnippet('t42')">Hint</button>
+            <h3>43. Arrival Board View</h3> <p>Create view: FlightNumber, Origin City, Status.</p> <button class="snippet-btn" onclick="loadSnippet('t43')">Hint</button>
+            <h3>44. Duty Free View</h3> <p>Create view containing only 'Duty-Free' shops.</p> <button class="snippet-btn" onclick="loadSnippet('t44')">Hint</button>
+            <h3>45. Query a View</h3> <p>Query DepartureBoard for flights to 'London'.</p> <button class="snippet-btn" onclick="loadSnippet('t45')">Hint</button>
+            <h3>46. Heavy Baggage View</h3> <p>Create view of CheckIns where weight > 20.</p> <button class="snippet-btn" onclick="loadSnippet('t46')">Hint</button>
+            <h3>47. High Security View</h3> <p>Create view of staff with SecurityClearanceLevel 'High'.</p> <button class="snippet-btn" onclick="loadSnippet('t47')">Hint</button>
+            <h3>48. Fleet View</h3> <p>Create view: TailNumber, Model, Airline.</p> <button class="snippet-btn" onclick="loadSnippet('t48')">Hint</button>
+            <h3>49. Drop View</h3> <p>Delete the DutyFree view you made in task 44.</p> <button class="snippet-btn" onclick="loadSnippet('t49')">Hint</button>
+            <h3>50. Complex View</h3> <p>Create `FlightSummary` (Flight, Airline, DepCity, ArrCity).</p> <button class="snippet-btn" onclick="loadSnippet('t50')">Hint</button>
+        </div>
+    </div>
+
+    <!-- CENTER PANEL: Editor & Results -->
+    <div id="center-panel">
+        <div class="controls">
+            <button onclick="executeSQL()">▶ Run SQL (Ctrl+Enter)</button>
+            <button class="secondary" onclick="resetDB()" style="margin-left:auto; background:#dc2626;">Reset Database</button>
+        </div>
+        <div id="editor-pane">
+            <textarea id="sql-input" spellcheck="false" placeholder="Type your SQL here..."></textarea>
+        </div>
+        <div id="results-pane">
+            <div id="status"></div>
+            <div id="table-container">
+                <p style="color: #666; margin-top: 10px;">Results will appear here...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: Live Schema Explorer -->
+    <div id="right-panel">
+        <h2 style="margin-top:0;">📊 Live Schema</h2>
+        <p style="font-size: 0.8rem; color: #64748b;">Updates automatically.</p>
+        <ul style="list-style: none; font-size: 0.8rem; padding-bottom: 10px; border-bottom: 1px solid #ddd; margin-bottom: 10px;">
+            <li>🗄️ Table &nbsp; 📄 View</li>
+            <li>🔑 Primary Key</li>
+            <li>🔗 Foreign Key</li>
+        </ul>
+        <div id="schema-tree"></div>
+    </div>
+
+    <script>
+        let db; 
+        const sqlInput = document.getElementById('sql-input');
+        const statusDiv = document.getElementById('status');
+        const tableContainer = document.getElementById('table-container');
+
+        // --- ALL 50 SQL HINT SNIPPETS ---
+        const snippets = {
+            t1: `SELECT * FROM Airports;`,
+            t2: `SELECT * FROM Passengers WHERE LastName = 'Smith';`,
+            t3: `SELECT FlightNumber, ScheduledDepartureTime \nFROM Flights \nWHERE DepartureAirportID = (SELECT AirportID FROM Airports WHERE AirportCode = 'JFK');`,
+            t4: `SELECT FirstName, LastName, Email FROM Passengers;`,
+            t5: `SELECT FirstName AS "First Name", LastName AS "Last Name" FROM Passengers;`,
+            t6: `SELECT FlightNumber, ScheduledDepartureTime \nFROM Flights \nWHERE DATE(ScheduledDepartureTime) = '2024-07-29' \n   OR DATE(ScheduledDepartureTime) = '2024-07-30';`,
+            t7: `SELECT * FROM Passengers WHERE Email LIKE '%@email.com';`,
+            t8: `SELECT Model, ManufactureYear FROM Airplanes ORDER BY ManufactureYear DESC;`,
+            t9: `SELECT Model, ManufactureYear FROM Airplanes ORDER BY ManufactureYear DESC LIMIT 3;`,
+            t10: `SELECT Model, Capacity,\nCASE \n  WHEN Capacity < 200 THEN 'Small'\n  ELSE 'Large'\nEND AS Size\nFROM Airplanes;`,
+            t11: `SELECT f.FlightNumber, a.AirportName AS Departure \nFROM Flights f \nJOIN Airports a ON f.DepartureAirportID = a.AirportID;`,
+            t12: `SELECT F.FlightNumber, P.FirstName, P.LastName, C.SeatNumber\nFROM Passengers P\nJOIN CheckIns C ON P.PassengerID = C.PassengerID\nJOIN Flights F ON C.FlightID = F.FlightID\nWHERE F.FlightNumber = 'UA100';`,
+            t13: `SELECT R.Name, A.AirportCode \nFROM RetailEstablishments R \nJOIN Airports A ON R.AirportID = A.AirportID \nWHERE A.AirportCode = 'LHR' AND R.Type = 'Duty-Free';`,
+            t14: `SELECT A.TailNumber, F.FlightNumber \nFROM Airplanes A \nLEFT JOIN Flights F ON A.AirplaneID = F.AirplaneID;`,
+            t15: `SELECT CM.FirstName, CM.LastName, CM.Role \nFROM CrewMembers CM\nJOIN FlightCrewAssignments FCA ON CM.CrewMemberID = FCA.CrewMemberID\nJOIN Flights F ON FCA.FlightID = F.FlightID\nWHERE F.FlightNumber = 'UA100';`,
+            t16: `SELECT BH.FirstName, BH.LastName, A.AirportCode\nFROM BaggageHandlers BH\nJOIN Airports A ON BH.AirportID = A.AirportID\nWHERE A.AirportCode = 'JFK';`,
+            t17: `SELECT SS.FirstName, SS.LastName\nFROM SecurityServices SS\nJOIN Airports A ON SS.AirportID = A.AirportID\nWHERE A.AirportCode = 'LHR' AND SS.SecurityClearanceLevel = 'High';`,
+            t18: `SELECT F.FlightNumber, Dep.City AS DepartCity, Arr.City AS ArriveCity\nFROM Flights F\nJOIN Airports Dep ON F.DepartureAirportID = Dep.AirportID\nJOIN Airports Arr ON F.ArrivalAirportID = Arr.AirportID;`,
+            t19: `SELECT P.FirstName, P.LastName, AP.Model\nFROM Passengers P\nJOIN CheckIns C ON P.PassengerID = C.PassengerID\nJOIN Flights F ON C.FlightID = F.FlightID\nJOIN Airplanes AP ON F.AirplaneID = AP.AirplaneID;`,
+            t20: `SELECT R.Name, R.Type\nFROM RetailEstablishments R\nJOIN BaggageHandlers BH ON R.AirportID = BH.AirportID\nWHERE BH.FirstName = 'Mike' AND BH.LastName = 'Tyson';`,
+            t21: `SELECT A.TailNumber, COUNT(F.FlightID) AS FlightCount \nFROM Airplanes A \nLEFT JOIN Flights F ON A.AirplaneID = F.AirplaneID \nGROUP BY A.TailNumber;`,
+            t22: `SELECT Airline, AVG(Capacity) AS AvgCapacity FROM Airplanes GROUP BY Airline;`,
+            t23: `SELECT F.FlightNumber, SUM(C.BaggageWeight) AS TotalWeight \nFROM Flights F \nJOIN CheckIns C ON F.FlightID = C.FlightID \nWHERE F.FlightNumber = 'UA100'\nGROUP BY F.FlightID;`,
+            t24: `SELECT F.FlightNumber, AVG(C.BaggageWeight) AS Avg_Bag_Weight\nFROM CheckIns C\nJOIN Flights F ON C.FlightID = F.FlightID\nGROUP BY F.FlightNumber\nHAVING AVG(C.BaggageWeight) > 15;`,
+            t25: `SELECT A.AirportName, COUNT(S.SecurityServiceID) AS HighSecCount\nFROM Airports A\nJOIN SecurityServices S ON A.AirportID = S.AirportID\nWHERE S.SecurityClearanceLevel = 'High'\nGROUP BY A.AirportID ORDER BY HighSecCount DESC LIMIT 1;`,
+            t26: `SELECT COUNT(DISTINCT Country) AS UniqueCountries FROM Airports;`,
+            t27: `SELECT Type, COUNT(*) AS StoreCount FROM RetailEstablishments GROUP BY Type;`,
+            t28: `SELECT MIN(Capacity) AS Smallest, MAX(Capacity) AS Largest FROM Airplanes;`,
+            t29: `SELECT A.Airline, SUM(C.BaggageWeight) AS TotalCargo\nFROM CheckIns C\nJOIN Flights F ON C.FlightID = F.FlightID\nJOIN Airplanes A ON F.AirplaneID = A.AirplaneID\nWHERE A.Airline = 'United Airlines'\nGROUP BY A.Airline;`,
+            t30: `SELECT Airline, COUNT(AirplaneID) AS FleetSize \nFROM Airplanes GROUP BY Airline HAVING COUNT(AirplaneID) > 1;`,
+            t31: `INSERT INTO Passengers (FirstName, LastName, PassportNumber, Email) \nVALUES ('Daniel', 'Lee', 'US9876543', 'daniel.lee@email.com');\nSELECT * FROM Passengers ORDER BY PassengerID DESC LIMIT 1;`,
+            t32: `UPDATE Flights SET Status = 'Delayed' WHERE FlightID = 4;\nSELECT FlightID, Status FROM Flights WHERE FlightID = 4;`,
+            t33: `DELETE FROM SecurityServices WHERE EmployeeID = 'SEC008';\nSELECT * FROM SecurityServices WHERE EmployeeID = 'SEC008';`,
+            t34: `ALTER TABLE Flights ADD COLUMN Terminal VARCHAR(5);\nALTER TABLE Flights ADD COLUMN Gate VARCHAR(10);\nSELECT * FROM Flights LIMIT 1;`,
+            t35: `UPDATE Flights SET Terminal = 'T1', Gate = 'A01' WHERE FlightNumber = 'UA100';\nSELECT FlightNumber, Terminal, Gate FROM Flights WHERE FlightNumber = 'UA100';`,
+            t36: `INSERT INTO Airports (AirportCode, AirportName, City, Country) VALUES ('SFO', 'San Francisco Intl', 'San Francisco', 'USA');\nSELECT * FROM Airports WHERE AirportCode = 'SFO';`,
+            t37: `UPDATE BaggageHandlers SET EmployeeID = 'BH999' WHERE FirstName = 'Mike' AND LastName = 'Tyson';\nSELECT * FROM BaggageHandlers WHERE EmployeeID = 'BH999';`,
+            t38: `DELETE FROM CheckIns WHERE CheckInID = 1;\nSELECT * FROM CheckIns LIMIT 3;`,
+            t39: `UPDATE Flights SET Status = 'Delayed' WHERE Status = 'Scheduled' AND ScheduledDepartureTime LIKE '2024-07-29%';\nSELECT FlightNumber, ScheduledDepartureTime, Status FROM Flights;`,
+            t40: `ALTER TABLE Passengers ADD COLUMN DateOfBirth DATE;\nSELECT * FROM Passengers LIMIT 1;`,
+            t41: `CREATE VIEW border_control AS SELECT FirstName, LastName, PassportNumber FROM Passengers;\nSELECT * FROM border_control;`,
+            t42: `CREATE VIEW DepartureBoard AS\nSELECT F.FlightNumber, A.City AS Destination, F.Status\nFROM Flights F JOIN Airports A ON F.ArrivalAirportID = A.AirportID;\nSELECT * FROM DepartureBoard;`,
+            t43: `CREATE VIEW ArrivalBoard AS\nSELECT F.FlightNumber, A.City AS Origin, F.Status\nFROM Flights F JOIN Airports A ON F.DepartureAirportID = A.AirportID;\nSELECT * FROM ArrivalBoard;`,
+            t44: `CREATE VIEW DutyFreeShops AS SELECT Name, AirportID FROM RetailEstablishments WHERE Type = 'Duty-Free';\nSELECT * FROM DutyFreeShops;`,
+            t45: `-- Assuming t42 view exists:\nSELECT * FROM DepartureBoard WHERE Destination = 'London';`,
+            t46: `CREATE VIEW HeavyBags AS SELECT * FROM CheckIns WHERE BaggageWeight > 20;\nSELECT * FROM HeavyBags;`,
+            t47: `CREATE VIEW EliteSecurity AS SELECT FirstName, LastName FROM SecurityServices WHERE SecurityClearanceLevel = 'High';\nSELECT * FROM EliteSecurity;`,
+            t48: `CREATE VIEW Fleet AS SELECT TailNumber, Model, Airline FROM Airplanes;\nSELECT * FROM Fleet;`,
+            t49: `DROP VIEW DutyFreeShops;\n-- Notice it disappears from the Schema panel on the right!`,
+            t50: `CREATE VIEW FlightSummary AS\nSELECT F.FlightNumber, AP.Airline, Dep.City AS DepCity, Arr.City AS ArrCity\nFROM Flights F\nJOIN Airplanes AP ON F.AirplaneID = AP.AirplaneID\nJOIN Airports Dep ON F.DepartureAirportID = Dep.AirportID\nJOIN Airports Arr ON F.ArrivalAirportID = Arr.AirportID;\nSELECT * FROM FlightSummary;`
+        };
+
+        // --- FULL DATABASE SCHEMA & ALL DATA FOR SQLITE ---
+        const initSQL = `
+            CREATE TABLE Airports (
+              AirportID INTEGER PRIMARY KEY AUTOINCREMENT,
+              AirportCode VARCHAR(3) NOT NULL UNIQUE,
+              AirportName VARCHAR(255) NOT NULL,
+              City VARCHAR(100) NOT NULL,
+              Country VARCHAR(100) NOT NULL,
+              Latitude DECIMAL(9,6),
+              Longitude DECIMAL(9,6)
+            );
+
+            CREATE TABLE Airplanes (
+              AirplaneID INTEGER PRIMARY KEY AUTOINCREMENT,
+              TailNumber VARCHAR(10) NOT NULL UNIQUE,
+              Model VARCHAR(50) NOT NULL,
+              Capacity INT NOT NULL,
+              ManufactureYear INT,
+              Airline VARCHAR(100)
+            );
+
+            CREATE TABLE Flights (
+              FlightID INTEGER PRIMARY KEY AUTOINCREMENT,
+              FlightNumber VARCHAR(10) NOT NULL,
+              DepartureAirportID INT NOT NULL,
+              ArrivalAirportID INT NOT NULL,
+              ScheduledDepartureTime DATETIME NOT NULL,
+              ScheduledArrivalTime DATETIME NOT NULL,
+              ActualDepartureTime DATETIME,
+              ActualArrivalTime DATETIME,
+              AirplaneID INT NOT NULL,
+              Status VARCHAR(20) NOT NULL DEFAULT 'Scheduled',
+              FOREIGN KEY (DepartureAirportID) REFERENCES Airports(AirportID),
+              FOREIGN KEY (ArrivalAirportID) REFERENCES Airports(AirportID),
+              FOREIGN KEY (AirplaneID) REFERENCES Airplanes(AirplaneID)
+            );
+
+            CREATE TABLE Passengers (
+              PassengerID INTEGER PRIMARY KEY AUTOINCREMENT,
+              FirstName VARCHAR(100) NOT NULL,
+              LastName VARCHAR(100) NOT NULL,
+              PassportNumber VARCHAR(20) UNIQUE,
+              Email VARCHAR(255),
+              PhoneNumber VARCHAR(20)
+            );
+
+            CREATE TABLE CrewMembers (
+              CrewMemberID INTEGER PRIMARY KEY AUTOINCREMENT,
+              FirstName VARCHAR(100) NOT NULL,
+              LastName VARCHAR(100) NOT NULL,
+              Role VARCHAR(50) NOT NULL,
+              EmployeeID VARCHAR(20) UNIQUE NOT NULL
+            );
+
+            CREATE TABLE FlightCrewAssignments (
+                AssignmentID INTEGER PRIMARY KEY AUTOINCREMENT,
+                FlightID INT NOT NULL,
+                CrewMemberID INT NOT NULL,
+                FOREIGN KEY (FlightID) REFERENCES Flights(FlightID),
+                FOREIGN KEY (CrewMemberID) REFERENCES CrewMembers(CrewMemberID),
+                UNIQUE (FlightID, CrewMemberID)
+            );
+
+            CREATE TABLE BaggageHandlers (
+              BaggageHandlerID INTEGER PRIMARY KEY AUTOINCREMENT,
+              FirstName VARCHAR(100) NOT NULL,
+              LastName VARCHAR(100) NOT NULL,
+              EmployeeID VARCHAR(20) UNIQUE NOT NULL,
+              AirportID INT NOT NULL,
+              FOREIGN KEY (AirportID) REFERENCES Airports(AirportID)
+            );
+
+            CREATE TABLE SecurityServices (
+              SecurityServiceID INTEGER PRIMARY KEY AUTOINCREMENT,
+              FirstName VARCHAR(100) NOT NULL,
+              LastName VARCHAR(100) NOT NULL,
+              EmployeeID VARCHAR(20) UNIQUE NOT NULL,
+              AirportID INT NOT NULL,
+              SecurityClearanceLevel VARCHAR(20) NOT NULL,
+              FOREIGN KEY (AirportID) REFERENCES Airports(AirportID)
+            );
+
+            CREATE TABLE CheckIns (
+              CheckInID INTEGER PRIMARY KEY AUTOINCREMENT,
+              PassengerID INT NOT NULL,
+              FlightID INT NOT NULL,
+              CheckInTime DATETIME NOT NULL,
+              BaggageWeight DECIMAL(5,2),
+              SeatNumber VARCHAR(5),
+              BoardingPassNumber VARCHAR(20) UNIQUE,
+              FOREIGN KEY (PassengerID) REFERENCES Passengers(PassengerID),
+              FOREIGN KEY (FlightID) REFERENCES Flights(FlightID)
+            );
+
+            CREATE TABLE RetailEstablishments (
+              RetailID INTEGER PRIMARY KEY AUTOINCREMENT,
+              Name VARCHAR(255) NOT NULL,
+              Type VARCHAR(50) NOT NULL,
+              AirportID INT NOT NULL,
+              Terminal VARCHAR(5),
+              FOREIGN KEY (AirportID) REFERENCES Airports(AirportID)
+            );
+
+            -- --- INSERTING DATA ---
+            INSERT INTO Airports (AirportCode, AirportName, City, Country, Latitude, Longitude) VALUES
+('JFK', 'John F. Kennedy International', 'New York', 'USA', 40.6413, -73.7781),
+('LHR', 'London Heathrow', 'London', 'UK', 51.4700, -0.4543),
+('HND', 'Haneda Airport', 'Tokyo', 'Japan', 35.5494, 139.7798),
+('CDG', 'Charles de Gaulle', 'Paris', 'France', 49.0097, 2.5479),
+('DXB', 'Dubai International', 'Dubai', 'UAE', 25.2532, 55.3657),
+('SIN', 'Changi Airport', 'Singapore', 'Singapore', 1.3644, 103.9915),
+('AMS', 'Schiphol Airport', 'Amsterdam', 'Netherlands', 52.3105, 4.7683),
+('FRA', 'Frankfurt Airport', 'Frankfurt', 'Germany', 50.0379, 8.5622),
+('SYD', 'Sydney Airport', 'Sydney', 'Australia', -33.9399, 151.1753),
+('GRU', 'Guarulhos International', 'Sao Paulo', 'Brazil', -23.4356, -46.4731),
+('HKG', 'Hong Kong International', 'Hong Kong', 'China', 22.3080, 113.9185),
+('YYZ', 'Toronto Pearson', 'Toronto', 'Canada', 43.6777, -79.6248),
+('ORD', 'O’Hare International', 'Chicago', 'USA', 41.9742, -87.9073),
+('MUC', 'Munich Airport', 'Munich', 'Germany', 48.3537, 11.7750),
+('ICN', 'Incheon International', 'Seoul', 'South Korea', 37.4602, 126.4407),
+('DEL', 'Indira Gandhi International', 'Delhi', 'India', 28.5562, 77.1000),
+('CPH', 'Copenhagen Airport', 'Copenhagen', 'Denmark', 55.6180, 12.6508),
+('SFO', 'San Francisco International', 'San Francisco', 'USA', 37.6213, -122.3790),
+('IST', 'Istanbul Airport', 'Istanbul', 'Turkey', 41.2753, 28.7519),
+('MEX', 'Mexico City International', 'Mexico City', 'Mexico', 19.4361, -99.0719);
+
+            INSERT INTO Airplanes (TailNumber, Model, Capacity, ManufactureYear, Airline) VALUES
+('N123AA', 'Boeing 737-800', 160, 2015, 'American Airlines'),
+('G-EUPY', 'Airbus A319', 144, 2012, 'British Airways'),
+('N789DL', 'Boeing 757-200', 199, 2008, 'Delta Air Lines'),
+('F-GZCP', 'Airbus A330-200', 250, 2010, 'Air France'),
+('A6-EET', 'Airbus A380-800', 517, 2014, 'Emirates'),
+('9V-SWB', 'Boeing 777-300ER', 264, 2016, 'Singapore Airlines'),
+('PH-BVA', 'Boeing 777-300ER', 408, 2011, 'KLM'),
+('D-AIMG', 'Airbus A380-800', 509, 2012, 'Lufthansa'),
+('VH-OQI', 'Airbus A380-800', 484, 2013, 'Qantas'),
+('PR-GUR', 'Boeing 737-800', 186, 2017, 'GOL Airlines'),
+('B-KPF', 'Boeing 777-300ER', 275, 2009, 'Cathay Pacific'),
+('C-GFAY', 'Airbus A330-300', 297, 2014, 'Air Canada'),
+('N234UA', 'Boeing 787-9', 252, 2018, 'United Airlines'),
+('D-AIXO', 'Airbus A350-900', 293, 2019, 'Lufthansa'),
+('HL8209', 'Boeing 777-300ER', 291, 2015, 'Korean Air'),
+('VT-ANL', 'Boeing 787-8', 256, 2014, 'Air India'),
+('OY-KBI', 'Airbus A321', 198, 2005, 'SAS'),
+('N506AS', 'Boeing 737-900ER', 178, 2016, 'Alaska Airlines'),
+('TC-JJO', 'Boeing 777-300ER', 349, 2011, 'Turkish Airlines'),
+('XA-ADL', 'Boeing 787-8', 243, 2014, 'Aeromexico');
+
+            INSERT INTO Flights (FlightNumber, DepartureAirportID, ArrivalAirportID, ScheduledDepartureTime, ScheduledArrivalTime, AirplaneID, Status) VALUES
+('AA101', 1, 2, '2026-04-01 18:00:00', '2026-04-02 06:00:00', 1, 'Scheduled'),
+('BA202', 2, 3, '2026-04-01 10:00:00', '2026-04-02 07:00:00', 2, 'Scheduled'),
+('DL303', 13, 18, '2026-04-01 08:30:00', '2026-04-01 11:00:00', 3, 'Scheduled'),
+('AF404', 4, 1, '2026-04-02 13:00:00', '2026-04-02 15:30:00', 4, 'Scheduled'),
+('EK505', 5, 2, '2026-04-02 02:00:00', '2026-04-02 07:00:00', 5, 'Scheduled'),
+('SQ606', 6, 9, '2026-04-02 21:00:00', '2026-04-03 06:00:00', 6, 'Scheduled'),
+('KL707', 7, 10, '2026-04-03 10:00:00', '2026-04-03 22:00:00', 7, 'Scheduled'),
+('LH808', 8, 11, '2026-04-03 14:00:00', '2026-04-04 08:00:00', 8, 'Scheduled'),
+('QF909', 9, 5, '2026-04-03 22:00:00', '2026-04-04 12:00:00', 9, 'Scheduled'),
+('G3101', 10, 20, '2026-04-04 05:00:00', '2026-04-04 11:00:00', 10, 'Scheduled'),
+('CX202', 11, 3, '2026-04-04 01:00:00', '2026-04-04 06:30:00', 11, 'Scheduled'),
+('AC303', 12, 4, '2026-04-04 20:00:00', '2026-04-05 09:00:00', 12, 'Scheduled'),
+('UA404', 18, 15, '2026-04-05 11:00:00', '2026-04-06 15:00:00', 13, 'Scheduled'),
+('LH505', 14, 16, '2026-04-05 21:00:00', '2026-04-06 10:00:00', 14, 'Scheduled'),
+('KE606', 15, 6, '2026-04-05 16:00:00', '2026-04-05 22:00:00', 15, 'Scheduled'),
+('AI707', 16, 1, '2026-04-06 02:00:00', '2026-04-06 08:00:00', 16, 'Scheduled'),
+('SK808', 17, 7, '2026-04-06 07:00:00', '2026-04-06 08:30:00', 17, 'Scheduled'),
+('AS909', 18, 12, '2026-04-06 14:00:00', '2026-04-06 21:00:00', 18, 'Scheduled'),
+('TK101', 19, 8, '2026-04-07 09:00:00', '2026-04-07 11:00:00', 19, 'Scheduled'),
+('AM202', 20, 13, '2026-04-07 15:00:00', '2026-04-07 19:30:00', 20, 'Scheduled');
+
+            INSERT INTO Passengers (FirstName, LastName, PassportNumber, Email, PhoneNumber) VALUES
+('James', 'Smith', 'P1234567', 'james.smith@email.com', '+1-555-0101'),
+('Maria', 'Garcia', 'P2345678', 'm.garcia@email.com', '+34-600-000-001'),
+('Yuki', 'Tanaka', 'P3456789', 'yuki.t@email.com', '+81-90-1234-5678'),
+('Hans', 'Müller', 'P4567890', 'h.mueller@email.com', '+49-151-234567'),
+('Fatima', 'Al-Sayed', 'P5678901', 'fatima.s@email.com', '+971-50-1234567'),
+('Li', 'Wei', 'P6789012', 'li.wei@email.com', '+86-138-1234-5678'),
+('Emma', 'Wilson', 'P7890123', 'e.wilson@email.com', '+44-7700-900000'),
+('Jean', 'Dupont', 'P8901234', 'j.dupont@email.com', '+33-6-12345678'),
+('Ananya', 'Rao', 'P9012345', 'ananya.r@email.com', '+91-98765-43210'),
+('Carlos', 'Oliveira', 'P0123456', 'c.oliveira@email.com', '+55-11-98765-4321'),
+('Robert', 'Brown', 'P1122334', 'r.brown@email.com', '+1-555-0102'),
+('Sarah', 'Miller', 'P2233445', 's.miller@email.com', '+1-555-0103'),
+('Kim', 'Min-ho', 'P3344556', 'kim.mh@email.com', '+82-10-1234-5678'),
+('Sofia', 'Rossi', 'P4455667', 's.rossi@email.com', '+39-333-1234567'),
+('Ahmed', 'Hassan', 'P5566778', 'a.hassan@email.com', '+20-100-1234567'),
+('Elena', 'Petrova', 'P6677889', 'e.petrova@email.com', '+7-916-123-45-67'),
+('Chloe', 'Lefebvre', 'P7788990', 'c.lefebvre@email.com', '+33-6-98765432'),
+('David', 'Jones', 'P8899001', 'd.jones@email.com', '+44-7700-900001'),
+('John', 'Doe', 'P9900112', 'j.doe@email.com', '+1-555-0199'),
+('Jane', 'Doe', 'P0011223', 'jane.doe@email.com', '+1-555-0198');
+
+            INSERT INTO CrewMembers (FirstName, LastName, Role, EmployeeID) VALUES
+('Robert', 'Taylor', 'Captain', 'EMP001'),
+('Linda', 'Anderson', 'First Officer', 'EMP002'),
+('Michael', 'Clark', 'Flight Attendant', 'EMP003'),
+('Susan', 'Lewis', 'Flight Attendant', 'EMP004'),
+('David', 'Walker', 'Captain', 'EMP005'),
+('Karen', 'Hall', 'First Officer', 'EMP006'),
+('Richard', 'Young', 'Flight Attendant', 'EMP007'),
+('Lisa', 'King', 'Flight Attendant', 'EMP008'),
+('Steven', 'Wright', 'Captain', 'EMP009'),
+('Donna', 'Lopez', 'First Officer', 'EMP010'),
+('Paul', 'Hill', 'Flight Attendant', 'EMP011'),
+('Sandra', 'Scott', 'Flight Attendant', 'EMP012'),
+('Mark', 'Green', 'Captain', 'EMP013'),
+('Nancy', 'Adams', 'First Officer', 'EMP014'),
+('Kenneth', 'Baker', 'Flight Attendant', 'EMP015'),
+('Betty', 'Gonzalez', 'Flight Attendant', 'EMP016'),
+('George', 'Nelson', 'Captain', 'EMP017'),
+('Margaret', 'Carter', 'First Officer', 'EMP018'),
+('Edward', 'Mitchell', 'Flight Attendant', 'EMP019'),
+('Ashley', 'Perez', 'Flight Attendant', 'EMP020');
+
+            INSERT INTO FlightCrewAssignments (FlightID, CrewMemberID) VALUES
+(1, 1), (1, 2), (1, 3), (1, 4),
+(2, 5), (2, 6), (2, 7), (2, 8),
+(3, 9), (3, 10), (3, 11), (3, 12),
+(4, 13), (4, 14), (4, 15), (4, 16),
+(5, 17), (5, 18), (5, 19), (5, 20);
+
+            INSERT INTO BaggageHandlers (FirstName, LastName, EmployeeID, AirportID) VALUES
+('Tom', 'Baker', 'BH001', 1), ('Jerry', 'Cook', 'BH002', 1),
+('Bill', 'Evans', 'BH003', 2), ('Ben', 'Ford', 'BH004', 2),
+('Sam', 'Gray', 'BH005', 3), ('Tim', 'Hill', 'BH006', 3),
+('Joe', 'Ives', 'BH007', 4), ('Leo', 'Jacks', 'BH008', 4),
+('Guy', 'Kent', 'BH009', 5), ('Ray', 'Lyle', 'BH010', 5),
+('Abe', 'Muir', 'BH011', 6), ('Dan', 'Nash', 'BH012', 6),
+('Rob', 'Owen', 'BH013', 7), ('Vic', 'Page', 'BH014', 7),
+('Cal', 'Reed', 'BH015', 8), ('Hal', 'Simm', 'BH016', 8),
+('Ned', 'Tate', 'BH017', 9), ('Sid', 'Vane', 'BH018', 9),
+('Art', 'West', 'BH019', 10), ('Ken', 'York', 'BH020', 10);
+
+            INSERT INTO SecurityServices (FirstName, LastName, EmployeeID, AirportID, SecurityClearanceLevel) VALUES
+('Victor', 'Zulu', 'SEC001', 1, 'High'),
+('Alice', 'Wonder', 'SEC002', 2, 'Medium'),
+('Bob', 'Builder', 'SEC003', 3, 'High'),
+('Charlie', 'Delta', 'SEC004', 4, 'Low'),
+('Eve', 'Online', 'SEC005', 5, 'High'),
+('Frank', 'Tank', 'SEC006', 6, 'Medium'),
+('Grace', 'Hopper', 'SEC007', 7, 'High'),
+('Hank', 'Hill', 'SEC008', 8, 'Low'),
+('Ivy', 'League', 'SEC009', 9, 'High'),
+('Jack', 'Sparrow', 'SEC010', 10, 'Medium'),
+('Kate', 'Middle', 'SEC011', 11, 'High'),
+('Liam', 'Neeson', 'SEC012', 12, 'High'),
+('Mona', 'Lisa', 'SEC013', 13, 'Medium'),
+('Nick', 'Fury', 'SEC014', 14, 'High'),
+('Oscar', 'Meyer', 'SEC015', 15, 'Low'),
+('Peter', 'Parker', 'SEC016', 16, 'High'),
+('Quinn', 'Fabray', 'SEC017', 17, 'Medium'),
+('Rose', 'Tyler', 'SEC018', 18, 'High'),
+('Steve', 'Rogers', 'SEC019', 19, 'High'),
+('Tony', 'Stark', 'SEC020', 20, 'High');
+
+            INSERT INTO CheckIns (PassengerID, FlightID, CheckInTime, BaggageWeight, SeatNumber, BoardingPassNumber) VALUES
+(1, 1, '2026-04-01 15:30:00', 20.5, '12A', 'BP1001'),
+(2, 2, '2026-04-01 07:45:00', 18.2, '14C', 'BP1002'),
+(3, 2, '2026-04-01 08:00:00', 22.0, '05F', 'BP1003'),
+(4, 4, '2026-04-02 11:00:00', 15.5, '22D', 'BP1004'),
+(5, 5, '2026-04-02 00:15:00', 25.0, '01A', 'BP1005'),
+(6, 6, '2026-04-02 19:30:00', 21.4, '10B', 'BP1006'),
+(7, 7, '2026-04-03 08:00:00', 12.0, '18A', 'BP1007'),
+(8, 8, '2026-04-03 12:00:00', 23.8, '03E', 'BP1008'),
+(9, 9, '2026-04-03 20:15:00', 19.5, '11F', 'BP1009'),
+(10, 10, '2026-04-04 03:00:00', 20.0, '07C', 'BP1010'),
+(11, 11, '2026-04-03 23:00:00', 24.1, '09D', 'BP1011'),
+(12, 12, '2026-04-04 18:00:00', 17.6, '25A', 'BP1012'),
+(13, 13, '2026-04-05 09:00:00', 21.0, '04B', 'BP1013'),
+(14, 14, '2026-04-05 19:15:00', 15.0, '16F', 'BP1014'),
+(15, 15, '2026-04-05 14:00:00', 22.5, '08A', 'BP1015'),
+(16, 16, '2026-04-06 00:30:00', 19.8, '12C', 'BP1016'),
+(17, 17, '2026-04-06 05:45:00', 10.5, '05D', 'BP1017'),
+(18, 18, '2026-04-06 12:20:00', 23.0, '14B', 'BP1018'),
+(19, 19, '2026-04-07 07:15:00', 18.5, '01F', 'BP1019'),
+(20, 20, '2026-04-07 13:40:00', 20.2, '10E', 'BP1020');
+
+            INSERT INTO RetailEstablishments (Name, Type, AirportID, Terminal) VALUES
+('Duty Free Shop', 'Retail', 1, 'T4'),
+('Starbucks', 'Cafe', 1, 'T4'),
+('WHSmith', 'Newsstand', 2, 'T5'),
+('Gucci', 'Luxury Retail', 2, 'T5'),
+('Sushi Zen', 'Restaurant', 3, 'T1'),
+('McDonalds', 'Fast Food', 4, 'T2E'),
+('Dubai Gifts', 'Souvenirs', 5, 'T3'),
+('Tiger Den', 'Bar', 6, 'T3'),
+('Tulip Flowers', 'Florist', 7, 'Hall1'),
+('BMW World', 'Showroom', 8, 'T1'),
+('Aussie Souvenirs', 'Retail', 9, 'T1'),
+('Brazil Coffee', 'Cafe', 10, 'T2'),
+('Tech World', 'Electronics', 11, 'T1'),
+('Maple Leaf Foods', 'Restaurant', 12, 'T3'),
+('Chicago Popcorn', 'Food', 13, 'T1'),
+('Beer Garden', 'Bar', 14, 'T2'),
+('Seoul Fashion', 'Retail', 15, 'T1'),
+('Spice Route', 'Restaurant', 16, 'T3'),
+('Danish Design', 'Retail', 17, 'T2'),
+('Napa Valley Wine', 'Bar', 18, 'Intl');
+        `;
+
+        // Initialize WebAssembly SQL
+        initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` }).then(function(SQL) {
+            window.SQL = SQL;
+            resetDB();
+            showStatus("Database Loaded Successfully!", "success");
+        }).catch(err => {
+            showStatus("Failed to load SQL engine. Check internet connection.", "error");
+        });
+
+        function resetDB() {
+            if (db) db.close();
+            db = new window.SQL.Database();
+            db.run(initSQL);
+            sqlInput.value = "-- Complete Database Initialised.\n-- Scroll through the tasks on the left, load hints, and run SQL.";
+            tableContainer.innerHTML = "";
+            showStatus("Database reset to initial state.", "success");
+            updateSchemaPanel(); // Update the right sidebar
+        }
+
+        function executeSQL() {
+            if (!db) return;
+            const query = sqlInput.value;
+            statusDiv.style.display = "none";
+            
+            try {
+                // Determine if query returns rows
+                const upperQuery = query.trim().toUpperCase();
+                const isSelect = upperQuery.startsWith("SELECT") || upperQuery.startsWith("PRAGMA");
+                
+                if (isSelect) {
+                    const result = db.exec(query);
+                    renderTable(result);
+                    showStatus("Query executed successfully.", "success");
+                } else {
+                    db.run(query);
+                    tableContainer.innerHTML = `<p style="color: #047857; font-weight: bold; margin-top: 15px;">✔ Command executed successfully (No table data to return).</p>`;
+                    showStatus("Command executed successfully.", "success");
+                }
+                updateSchemaPanel(); // Automatically refresh schema after every run in case of ALTER/CREATE/DROP
+            } catch (err) {
+                showStatus(err.message, "error");
+                tableContainer.innerHTML = "";
+            }
+        }
+
+        // --- DYNAMIC SCHEMA RENDERER ---
+        function updateSchemaPanel() {
+            if (!db) return;
+            const schemaTree = document.getElementById('schema-tree');
+            schemaTree.innerHTML = '';
+            
+            try {
+                // Get all tables and views
+                const entities = db.exec("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type ASC, name ASC;");
+                if (entities.length === 0) return;
+                
+                entities[0].values.forEach(row => {
+                    const name = row[0];
+                    const type = row[1]; // 'table' or 'view'
+                    
+                    const details = document.createElement('details');
+                    const summary = document.createElement('summary');
+                    summary.innerHTML = (type === 'view' ? '📄 ' : '🗄️ ') + `${name}`;
+                    details.appendChild(summary);
+                    
+                    const ul = document.createElement('ul');
+                    ul.className = 'schema-list';
+                    
+                    // Fetch Columns and Foreign Keys
+                    const cols = db.exec(`PRAGMA table_info('${name}');`);
+                    let fkList = [];
+                    if (type === 'table') {
+                        const fks = db.exec(`PRAGMA foreign_key_list('${name}');`);
+                        if(fks.length > 0) {
+                            fks[0].values.forEach(fk => { fkList.push(fk[3]); }); // index 3 is 'from' col name
+                        }
+                    }
+                    
+                    if (cols.length > 0) {
+                        cols[0].values.forEach(col => {
+                            const colName = col[1];
+                            const colType = col[2];
+                            const isPk = col[5] > 0;
+                            const isFk = fkList.includes(colName);
+                            
+                            let icon = '🔸';
+                            if (isPk && isFk) icon = '🔑🔗';
+                            else if (isPk) icon = '🔑';
+                            else if (isFk) icon = '🔗';
+                            
+                            const li = document.createElement('li');
+                            li.innerHTML = `${icon} ${colName} <span class="schema-type">${colType}</span>`;
+                            ul.appendChild(li);
+                        });
+                    }
+                    
+                    details.appendChild(ul);
+                    schemaTree.appendChild(details);
+                });
+            } catch(e) { console.error("Error building schema:", e); }
+        }
+
+        // --- UTILITIES ---
+        function renderTable(results) {
+            tableContainer.innerHTML = "";
+            if (results.length === 0) {
+                tableContainer.innerHTML = "<p style='margin-top: 15px;'>No results returned.</p>";
+                return;
+            }
+
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const tbody = document.createElement('tbody');
+
+            const headerRow = document.createElement('tr');
+            results[0].columns.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = col;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+
+            results[0].values.forEach(row => {
+                const tr = document.createElement('tr');
+                row.forEach(val => {
+                    const td = document.createElement('td');
+                    td.textContent = val !== null ? val : 'NULL';
+                    if(val === null) td.style.color = '#94a3b8';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+
+            table.appendChild(thead);
+            table.appendChild(tbody);
+            tableContainer.appendChild(table);
+        }
+
+        function showStatus(msg, type) {
+            statusDiv.textContent = msg;
+            statusDiv.className = type;
+            statusDiv.style.display = 'block';
+            setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+        }
+
+        function loadSnippet(snippetId) {
+            if (snippets[snippetId]) {
+                sqlInput.value = snippets[snippetId];
+                sqlInput.focus();
+            }
+        }
+
+        function showSchema() {
+            sqlInput.value = "-- Look at the 'Live Schema' panel on the right!\n-- It automatically tracks Tables, Views, and Keys.\n\nSELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%';";
+            executeSQL();
+        }
+
+        // Ctrl+Enter Execution
+        sqlInput.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                executeSQL();
+            }
+        });
+    </script>
+</body>
+</html>
