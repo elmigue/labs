@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoSQL Lab@Ulaw: MongoDB Airport Management</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --border: #334155;
+            --primary: #10b981; 
+            --primary-hover: #059669;
+            --text: #f8fafc;
+            --code-bg: #000000;
+            --code-text: #a7f3d0;
+            --accent: #38bdf8;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        body { display: flex; flex-direction: row; width: 100vw; height: 100vh; background-color: var(--bg-color); color: var(--text); overflow: hidden; }
+        
+        /* Layout */
+        #left-panel { flex: 0 0 28%; min-width: 280px; max-width: 50%; resize: horizontal; overflow-y: auto; background: var(--panel-bg); border-right: 2px solid var(--border); padding: 20px; display: flex; flex-direction: column; }
+        #center-panel { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+        #right-panel { flex: 0 0 25%; min-width: 250px; background: var(--panel-bg); border-left: 2px solid var(--border); overflow-y: auto; padding: 15px; font-size: 0.9rem; }
+
+        #editor-pane { height: 40%; border-bottom: 2px solid var(--border); display: flex; flex-direction: column; }
+        #results-pane { height: 60%; background: #020617; overflow: auto; padding: 15px; font-family: monospace; color: #e2e8f0; font-size: 0.95rem;}
+        
+        /* Typography */
+        h1 { font-size: 1.3rem; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 20px; color: var(--primary); }
+        h2 { font-size: 1.1rem; margin-top: 20px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+        h3 { font-size: 0.95rem; color: #cbd5e1; margin-top: 15px; font-weight: 600; }
+        p { margin-bottom: 10px; line-height: 1.4; font-size: 0.85rem; color: #94a3b8; }
+        code { background: #334155; padding: 2px 5px; border-radius: 4px; font-family: monospace; color: #fde047; font-size: 0.9em; }
+        
+        /* Interactive Elements */
+        textarea { width: 100%; flex-grow: 1; background: var(--code-bg); color: var(--code-text); font-family: 'Courier New', Courier, monospace; font-size: 1.05rem; padding: 15px; border: none; resize: none; outline: none; }
+        .controls { padding: 10px; background: #0f172a; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--border); }
+        button { background: var(--primary); color: #000; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 0.85rem; }
+        button:hover { background: var(--primary-hover); color: #fff;}
+        button.secondary { background: #475569; color: #fff; }
+        button.secondary:hover { background: #334155; }
+        button.snippet-btn { background: #38bdf8; color: #000; font-size: 0.7rem; padding: 4px 8px; margin-bottom: 10px; border-radius: 3px; }
+        
+        .task-box { background: #0f172a; border-left: 4px solid var(--primary); padding: 10px 15px; margin-bottom: 15px; border-radius: 0 4px 4px 0; }
+
+        /* Schema / Document Explorer */
+        details { margin-bottom: 10px; }
+        summary { cursor: pointer; padding: 8px; background: #334155; border-radius: 4px; font-weight: 600; user-select: none; transition: background 0.1s; }
+        summary:hover { background: #475569; }
+        .collection-count { color: var(--primary); float: right; font-size: 0.8rem; background: #0f172a; padding: 2px 6px; border-radius: 10px;}
+        
+        /* Individual Document Styling */
+        .doc-list { padding-left: 10px; margin-top: 5px; border-left: 1px solid #475569; }
+        .doc-summary { font-family: monospace; font-size: 0.75rem; background: transparent; padding: 4px; color: #94a3b8; border-bottom: 1px solid #334155; border-radius: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+        .doc-summary:hover { background: #0f172a; color: #fff; }
+        .doc-pre { margin: 0 0 10px 0; padding: 10px; background: #000; font-size: 0.75rem; border-radius: 0 0 4px 4px; overflow-x: auto; }
+
+        /* JSON Rendering Colors */
+        .json-key { color: #38bdf8; }
+        .json-string { color: #a3e635; }
+        .json-number { color: #fde047; }
+        .json-boolean { color: #f43f5e; }
+        .json-null { color: #94a3b8; font-style: italic; }
+
+        /* Context Menu */
+        #context-menu { display: none; position: absolute; background: #1e293b; border: 1px solid #475569; border-radius: 6px; z-index: 9999; min-width: 180px; padding: 5px 0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+        .context-menu-item { padding: 8px 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #f8fafc; }
+        .context-menu-item:hover { background: #334155; color: var(--primary); }
+    </style>
+</head>
+<body>
+
+    <div id="context-menu">
+        <div class="context-menu-item" onclick="ctxAction('find')">🔍 <code>db.col.find()</code></div>
+        <div class="context-menu-item" onclick="ctxAction('count')">🔢 <code>db.col.count()</code></div>
+        <div class="context-menu-item" onclick="ctxAction('drop')">🗑️ <code>db.col.drop()</code></div>
+    </div>
+
+    <!-- LEFT PANEL: Tasks -->
+    <div id="left-panel">
+        <h1>🍃 MongoDB Lab@Ulaw: ✈️ Tasks</h1>
+        <p>Complete these 35 tasks. Explore collections on the right by clicking to expand their documents!</p>
+
+        <div class="task-box">
+            <h2>Part 1: Basic Queries (find)</h2>
+            <h3>1. Read All</h3> <p>Get all documents in the <code>airports</code> collection.</p> <button class="snippet-btn" onclick="loadSnippet('t1')">Hint</button>
+            <h3>2. Exact Match</h3> <p>Find the airport with <code>"airportCode": "JFK"</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t2')">Hint</button>
+            <h3>3. Nested Object Query</h3> <p>Find airports located in the city of 'London'.</p> <button class="snippet-btn" onclick="loadSnippet('t3')">Hint</button>
+            <h3>4. Number Condition</h3> <p>Find airplanes where <code>capacity</code> is exactly 525.</p> <button class="snippet-btn" onclick="loadSnippet('t4')">Hint</button>
+            <h3>5. Array Match</h3> <p>Find flights where the <code>status</code> is "Scheduled".</p> <button class="snippet-btn" onclick="loadSnippet('t5')">Hint</button>
+        </div>
+
+        <div class="task-box">
+            <h2>Part 2: Projections & Logic</h2>
+            <h3>6. Basic Projection</h3> <p>Return all passengers, but ONLY show their <code>firstName</code> and <code>lastName</code>. Exclude <code>_id</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t6')">Hint</button>
+            <h3>7. Greater Than ($gt)</h3> <p>Find airplanes with a capacity greater than 300 using <code>$gt</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t7')">Hint</button>
+            <h3>8. Less Than ($lt)</h3> <p>Find airplanes manufactured before 2018 using <code>$lt</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t8')">Hint</button>
+            <h3>9. In Array ($in)</h3> <p>Find airports in either 'USA' or 'UK' using <code>$in</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t9')">Hint</button>
+            <h3>10. Count Documents</h3> <p>Chain <code>.count()</code> to find out how many passengers exist.</p> <button class="snippet-btn" onclick="loadSnippet('t10')">Hint</button>
+        </div>
+
+        <div class="task-box">
+            <h2>Part 3: Deep Embedded Queries</h2>
+            <h3>11. Querying Array of Objects</h3> <p>Find the airport employing a Baggage Handler named 'Mike'.</p> <button class="snippet-btn" onclick="loadSnippet('t11')">Hint</button>
+            <h3>12. Deep Nesting</h3> <p>Find flights departing from 'CDG' (<code>route.departure.airportCode</code>).</p> <button class="snippet-btn" onclick="loadSnippet('t12')">Hint</button>
+            <h3>13. Multiple Conditions</h3> <p>Find flights departing from 'LHR' AND arriving at 'JFK'.</p> <button class="snippet-btn" onclick="loadSnippet('t13')">Hint</button>
+            <h3>14. Embedded Checks</h3> <p>Find the flight where passenger 'John Doe' checked in.</p> <button class="snippet-btn" onclick="loadSnippet('t14')">Hint</button>
+            <h3>15. Find One</h3> <p>Use <code>findOne()</code> to get just a single airplane record.</p> <button class="snippet-btn" onclick="loadSnippet('t15')">Hint</button>
+        </div>
+
+        <div class="task-box">
+            <h2>Part 4: Inserting Data</h2>
+            <h3>16. Insert One</h3> <p>Insert a new airplane into <code>airplanes</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t16')">Hint</button>
+            <h3>17. Insert Many</h3> <p>Insert two new passengers at once using an array.</p> <button class="snippet-btn" onclick="loadSnippet('t17')">Hint</button>
+            <h3>18. Insert with Array</h3> <p>Insert an airport including a <code>retailEstablishments</code> array.</p> <button class="snippet-btn" onclick="loadSnippet('t18')">Hint</button>
+        </div>
+
+        <div class="task-box">
+            <h2>Part 5: Updating Data</h2>
+            <h3>19. Update One ($set)</h3> <p>Change flight 'UA100' status to 'Delayed'.</p> <button class="snippet-btn" onclick="loadSnippet('t19')">Hint</button>
+            <h3>20. Update Nested Field</h3> <p>Update JFK airport's location latitude to 40.0000.</p> <button class="snippet-btn" onclick="loadSnippet('t20')">Hint</button>
+            <h3>21. Push to Array ($push)</h3> <p>Add a new retail shop to JFK's array.</p> <button class="snippet-btn" onclick="loadSnippet('t21')">Hint</button>
+            <h3>22. Update Many</h3> <p>Set all airplanes made before 2016 to <code>needsInspection: true</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t22')">Hint</button>
+            <h3>23. Add to Flight</h3> <p>Use <code>$push</code> to add a check-in to flight 'EK123'.</p> <button class="snippet-btn" onclick="loadSnippet('t23')">Hint</button>
+        </div>
+
+        <div class="task-box">
+            <h2>Part 6: Deleting & Aggregation</h2>
+            <h3>24. Delete One</h3> <p>Delete the passenger with passport 'US1234567'.</p> <button class="snippet-btn" onclick="loadSnippet('t24')">Hint</button>
+            <h3>25. Delete Many</h3> <p>Delete all airplanes with capacity less than 200.</p> <button class="snippet-btn" onclick="loadSnippet('t25')">Hint</button>
+            <h3>26. Basic Aggregation</h3> <p>Count airplanes per airline using <code>$group</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t26')">Hint</button>
+            <h3>27. Aggregation Sum</h3> <p>Calculate total capacity of the entire fleet.</p> <button class="snippet-btn" onclick="loadSnippet('t27')">Hint</button>
+            <h3>28. Pipeline Match</h3> <p>Average capacity of ONLY Boeing 787-9 models.</p> <button class="snippet-btn" onclick="loadSnippet('t28')">Hint</button>
+            <h3>29. Pipeline Sort</h3> <p>Airlines sorted by fleet size descending.</p> <button class="snippet-btn" onclick="loadSnippet('t29')">Hint</button>
+            <h3>30. Drop Collection</h3> <p>Drop the entire <code>passengers</code> collection.</p> <button class="snippet-btn" onclick="loadSnippet('t30')">Hint</button>
+        </div>
+
+        <div class="task-box">
+            <h2>Part 7: Collections & Objects</h2>
+            <h3>31. Explicit Creation</h3> <p>Create a brand new collection called <code>audit_logs</code>.</p> <button class="snippet-btn" onclick="loadSnippet('t31')">Hint</button>
+            <h3>32. Insert into New Collection</h3> <p>Insert a log document into the new <code>audit_logs</code> collection.</p> <button class="snippet-btn" onclick="loadSnippet('t32')">Hint</button>
+            <h3>33. Empty a Collection</h3> <p>Delete all objects from <code>audit_logs</code> WITHOUT dropping it.</p> <button class="snippet-btn" onclick="loadSnippet('t33')">Hint</button>
+            <h3>34. Drop New Collection</h3> <p>Delete the <code>audit_logs</code> collection entirely.</p> <button class="snippet-btn" onclick="loadSnippet('t34')">Hint</button>
+            <h3>35. Implicit Creation</h3> <p>MongoDB auto-creates collections! Insert an object into a non-existent <code>vip_lounges</code> collection to see it appear.</p> <button class="snippet-btn" onclick="loadSnippet('t35')">Hint</button>
+        </div>
+    </div>
+
+    <!-- CENTER PANEL: Editor & Results -->
+    <div id="center-panel">
+        <div class="controls">
+            <button onclick="runQuery()">▶ Run Code (Ctrl+Enter)</button>
+            <button class="secondary" onclick="clearConsole()">Clear Console</button>
+            <button class="secondary" onclick="resetDB()" style="margin-left:auto; background:#dc2626;">Reset Database</button>
+        </div>
+        <div id="editor-pane">
+            <textarea id="sql-input" spellcheck="false">// MongoDB Shell Emulator Ready
+// Try expanding the collections on the right!
+
+db.flights.find({"status": "Scheduled"})</textarea>
+        </div>
+        <div id="results-pane">
+            <div id="output-console">System Initialized. Database loaded into memory.</div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: Schema Explorer -->
+    <div id="right-panel">
+        <h2 style="margin-top:0;">📂 Collections</h2>
+        <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 15px;">Click to view documents. Right-click for options.</p>
+        <div id="schema-tree"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. MONGODB IN-MEMORY JAVASCRIPT EMULATOR
+        // ==========================================
+        
+        function getNestedValue(obj, path) {
+            return path.split('.').reduce((o, i) => (o === undefined ? undefined : o[i]), obj);
+        }
+
+        function setNestedValue(obj, path, value) {
+            let schema = obj;
+            const pList = path.split('.');
+            const len = pList.length;
+            for(let i = 0; i < len-1; i++) {
+                let elem = pList[i];
+                if( !schema[elem] ) schema[elem] = {};
+                schema = schema[elem];
+            }
+            schema[pList[len-1]] = value;
+        }
+
+        function pushNestedValue(obj, path, value) {
+            let target = getNestedValue(obj, path);
+            if (!Array.isArray(target)) {
+                setNestedValue(obj, path, [value]);
+            } else {
+                target.push(value);
+            }
+        }
+
+        function matchDoc(doc, query) {
+            for (let key in query) {
+                let docValue = getNestedValue(doc, key);
+                let qValue = query[key];
+
+                if (typeof qValue === 'object' && qValue !== null && !Array.isArray(qValue)) {
+                    for (let op in qValue) {
+                        if (op === '$gt' && !(docValue > qValue[op])) return false;
+                        if (op === '$lt' && !(docValue < qValue[op])) return false;
+                        if (op === '$in' && !qValue[op].includes(docValue)) return false;
+                    }
+                } else if (Array.isArray(docValue)) {
+                    let matchInArray = false;
+                    for (let item of docValue) {
+                        if (typeof item === 'object') {
+                            let parts = key.split('.');
+                            let lastKey = parts[parts.length-1];
+                            if (item[lastKey] === qValue || item[key] === qValue) matchInArray = true;
+                        } else {
+                            if (item === qValue) matchInArray = true;
+                        }
+                    }
+                    if (!matchInArray && docValue !== qValue) return false;
+                } else {
+                    if (docValue !== qValue) return false;
+                }
+            }
+            return true;
+        }
+
+        class MongoCollection {
+            constructor(name, data, parentDb) {
+                this.name = name;
+                this.data = JSON.parse(JSON.stringify(data)); 
+                this.parentDb = parentDb;
+            }
+
+            find(query = {}, projection = null) {
+                let results = this.data.filter(doc => matchDoc(doc, query));
+                if (projection) {
+                    let includeMode = Object.values(projection).some(v => v === 1) ? 1 : 0;
+                    results = results.map(doc => {
+                        let newDoc = {};
+                        if (projection['_id'] !== 0) newDoc['_id'] = doc['_id'];
+                        if (includeMode === 1) {
+                            for (let key in projection) {
+                                if (projection[key] === 1) newDoc[key] = doc[key];
+                            }
+                        } else {
+                            newDoc = { ...doc };
+                            for (let key in projection) {
+                                if (projection[key] === 0) delete newDoc[key];
+                            }
+                        }
+                        return newDoc;
+                    });
+                }
+                return { results: results, count: () => results.length };
+            }
+
+            findOne(query = {}, projection = null) {
+                let res = this.find(query, projection).results;
+                return res.length > 0 ? res[0] : null;
+            }
+
+            insertOne(doc) {
+                if (!doc._id) doc._id = 'ObjectId("' + Math.random().toString(16).substr(2, 12) + '")';
+                this.data.push(doc);
+                return { acknowledged: true, insertedId: doc._id };
+            }
+
+            insertMany(docs) {
+                docs.forEach(doc => {
+                    if (!doc._id) doc._id = 'ObjectId("' + Math.random().toString(16).substr(2, 12) + '")';
+                    this.data.push(doc);
+                });
+                return { acknowledged: true, insertedCount: docs.length };
+            }
+
+            updateOne(query, updateDef) {
+                let doc = this.data.find(d => matchDoc(d, query));
+                if (!doc) return { acknowledged: true, matchedCount: 0, modifiedCount: 0 };
+                this._applyUpdate(doc, updateDef);
+                return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
+            }
+
+            updateMany(query, updateDef) {
+                let count = 0;
+                this.data.forEach(doc => {
+                    if (matchDoc(doc, query)) {
+                        this._applyUpdate(doc, updateDef);
+                        count++;
+                    }
+                });
+                return { acknowledged: true, matchedCount: count, modifiedCount: count };
+            }
+
+            _applyUpdate(doc, updateDef) {
+                if (updateDef.$set) {
+                    for (let key in updateDef.$set) setNestedValue(doc, key, updateDef.$set[key]);
+                }
+                if (updateDef.$push) {
+                    for (let key in updateDef.$push) pushNestedValue(doc, key, updateDef.$push[key]);
+                }
+            }
+
+            deleteOne(query) {
+                let index = this.data.findIndex(d => matchDoc(d, query));
+                if (index === -1) return { acknowledged: true, deletedCount: 0 };
+                this.data.splice(index, 1);
+                return { acknowledged: true, deletedCount: 1 };
+            }
+
+            deleteMany(query) {
+                let initialLength = this.data.length;
+                this.data = this.data.filter(d => !matchDoc(d, query));
+                return { acknowledged: true, deletedCount: initialLength - this.data.length };
+            }
+            
+            count() { return this.data.length; }
+            
+            drop() { 
+                if(this.parentDb) delete this.parentDb[this.name];
+                this.data = []; 
+                return true; 
+            }
+
+            aggregate(pipeline) {
+                let currentData = [...this.data];
+                pipeline.forEach(stage => {
+                    if (stage.$match) {
+                        currentData = currentData.filter(d => matchDoc(d, stage.$match));
+                    }
+                    else if (stage.$group) {
+                        let grouped = {};
+                        currentData.forEach(doc => {
+                            let groupId = stage.$group._id === null ? "all" : getNestedValue(doc, stage.$group._id.replace('$',''));
+                            if (!grouped[groupId]) {
+                                grouped[groupId] = { _id: stage.$group._id === null ? null : groupId };
+                                for (let key in stage.$group) {
+                                    if (key !== '_id') {
+                                        let op = Object.keys(stage.$group[key])[0];
+                                        grouped[groupId][key] = (op === '$sum' || op === '$avg') ? 0 : null;
+                                        grouped[groupId]['_count_' + key] = 0;
+                                    }
+                                }
+                            }
+                            for (let key in stage.$group) {
+                                if (key !== '_id') {
+                                    let opObj = stage.$group[key];
+                                    let op = Object.keys(opObj)[0];
+                                    let valField = opObj[op];
+                                    let val = typeof valField === 'number' ? valField : getNestedValue(doc, valField.replace('$',''));
+                                    
+                                    if (op === '$sum') grouped[groupId][key] += (val || 0);
+                                    if (op === '$avg') {
+                                        grouped[groupId][key] += (val || 0);
+                                        grouped[groupId]['_count_' + key]++;
+                                    }
+                                }
+                            }
+                        });
+                        currentData = Object.values(grouped).map(g => {
+                            for (let key in stage.$group) {
+                                if (key !== '_id' && Object.keys(stage.$group[key])[0] === '$avg') {
+                                    g[key] = g[key] / g['_count_' + key];
+                                }
+                                delete g['_count_' + key];
+                            }
+                            return g;
+                        });
+                    }
+                    else if (stage.$sort) {
+                        let sortKey = Object.keys(stage.$sort)[0];
+                        let sortDir = stage.$sort[sortKey];
+                        currentData.sort((a,b) => {
+                            if (a[sortKey] < b[sortKey]) return -1 * sortDir;
+                            if (a[sortKey] > b[sortKey]) return 1 * sortDir;
+                            return 0;
+                        });
+                    }
+                });
+                return { results: currentData };
+            }
+        }
+
+        // ==========================================
+        // 2. FULL DATASET INJECTION & PROXY DB
+        // ==========================================
+        
+        let rawDb = {};
+        let db;
+
+        function initDatabase() {
+            rawDb = {};
+            
+            rawDb.airports = new MongoCollection('airports', [
+                { "_id": "JFK", "airportCode": "JFK", "name": "John F. Kennedy Intl", "location": { "city": "New York", "country": "USA", "latitude": 40.6413, "longitude": -73.7781 }, "retailEstablishments": [{ "name": "Starbucks", "type": "Restaurant", "terminal": "T1" }, { "name": "WHSmith", "type": "Bookstore", "terminal": "T2" }], "baggageHandlers": [{ "employeeId": "BH001", "firstName": "Mike", "lastName": "Tyson" }], "securityServices": [{ "employeeId": "SEC001", "firstName": "James", "lastName": "Bond", "level": "Level 3" }] },
+                { "_id": "LHR", "airportCode": "LHR", "name": "Heathrow Airport", "location": { "city": "London", "country": "UK", "latitude": 51.4700, "longitude": -0.4543 }, "retailEstablishments": [{ "name": "Duty Free Shop", "type": "Duty-Free", "terminal": "T1" }, { "name": "McDonalds", "type": "Restaurant", "terminal": "T2" }], "baggageHandlers": [{ "employeeId": "BH002", "firstName": "Ronda", "lastName": "Rousey" }], "securityServices": [{ "employeeId": "SEC002", "firstName": "Ethan", "lastName": "Hunt", "level": "Level 3" }] },
+                { "_id": "CDG", "airportCode": "CDG", "name": "Charles de Gaulle", "location": { "city": "Paris", "country": "France", "latitude": 49.0097, "longitude": 2.5479 }, "retailEstablishments": [{ "name": "Zara", "type": "Clothing", "terminal": "T1" }], "baggageHandlers": [{ "employeeId": "BH003", "firstName": "Conor", "lastName": "McGregor" }], "securityServices": [{ "employeeId": "SEC003", "firstName": "Jason", "lastName": "Bourne", "level": "Level 3" }] },
+                { "_id": "HND", "airportCode": "HND", "name": "Tokyo Haneda", "location": { "city": "Tokyo", "country": "Japan", "latitude": 35.5494, "longitude": 139.7798 }, "retailEstablishments": [{ "name": "Burger King", "type": "Restaurant", "terminal": "T1" }], "baggageHandlers": [{ "employeeId": "BH004", "firstName": "Serena", "lastName": "Williams" }], "securityServices": [{ "employeeId": "SEC004", "firstName": "Jack", "lastName": "Ryan", "level": "Level 2" }] },
+                { "_id": "DXB", "airportCode": "DXB", "name": "Dubai Intl", "location": { "city": "Dubai", "country": "UAE", "latitude": 25.2532, "longitude": 55.3657 }, "retailEstablishments": [{ "name": "H&M", "type": "Clothing", "terminal": "T1" }], "baggageHandlers": [{ "employeeId": "BH005", "firstName": "Michael", "lastName": "Jordan" }], "securityServices": [{ "employeeId": "SEC005", "firstName": "Sydney", "lastName": "Bristow", "level": "Level 2" }] },
+                { "_id": "LAX", "airportCode": "LAX", "name": "Los Angeles Intl", "location": { "city": "Los Angeles", "country": "USA", "latitude": 33.9416, "longitude": -118.4085 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "SYD", "airportCode": "SYD", "name": "Sydney Airport", "location": { "city": "Sydney", "country": "Australia", "latitude": -33.9461, "longitude": 151.1773 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "JNB", "airportCode": "JNB", "name": "O.R. Tambo Intl", "location": { "city": "Johannesburg", "country": "South Africa", "latitude": -26.1392, "longitude": 28.2460 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "GRU", "airportCode": "GRU", "name": "São Paulo Intl", "location": { "city": "São Paulo", "country": "Brazil", "latitude": -23.4356, "longitude": -46.4731 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "AMS", "airportCode": "AMS", "name": "Amsterdam Schiphol", "location": { "city": "Amsterdam", "country": "Netherlands", "latitude": 52.3105, "longitude": 4.7683 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "SFO", "airportCode": "SFO", "name": "San Francisco Intl", "location": { "city": "San Francisco", "country": "USA", "latitude": 37.6188, "longitude": -122.3758 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "ORD", "airportCode": "ORD", "name": "O'Hare Intl", "location": { "city": "Chicago", "country": "USA", "latitude": 41.9786, "longitude": -87.9047 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "FRA", "airportCode": "FRA", "name": "Frankfurt Airport", "location": { "city": "Frankfurt", "country": "Germany", "latitude": 50.0333, "longitude": 8.5706 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "SIN", "airportCode": "SIN", "name": "Changi Airport", "location": { "city": "Singapore", "country": "Singapore", "latitude": 1.3644, "longitude": 103.9915 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "HKG", "airportCode": "HKG", "name": "Hong Kong Intl", "location": { "city": "Hong Kong", "country": "Hong Kong", "latitude": 22.3080, "longitude": 113.9185 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "YYZ", "airportCode": "YYZ", "name": "Toronto Pearson", "location": { "city": "Toronto", "country": "Canada", "latitude": 43.6777, "longitude": -79.6248 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "MEL", "airportCode": "MEL", "name": "Melbourne Airport", "location": { "city": "Melbourne", "country": "Australia", "latitude": -37.6690, "longitude": 144.8410 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "ICN", "airportCode": "ICN", "name": "Incheon Intl", "location": { "city": "Seoul", "country": "South Korea", "latitude": 37.4602, "longitude": 126.4407 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "IST", "airportCode": "IST", "name": "Istanbul Airport", "location": { "city": "Istanbul", "country": "Turkey", "latitude": 41.2589, "longitude": 28.7456 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] },
+                { "_id": "DOH", "airportCode": "DOH", "name": "Hamad Intl", "location": { "city": "Doha", "country": "Qatar", "latitude": 25.2731, "longitude": 51.6081 }, "retailEstablishments": [], "baggageHandlers": [], "securityServices": [] }
+            ], rawDb);
+
+            rawDb.airplanes = new MongoCollection('airplanes', [
+                { "_id": "N12345", "model": "Boeing 787-9", "capacity": 296, "manufactureYear": 2018, "airline": "United Airlines" },
+                { "_id": "G-ABCD", "model": "Airbus A380", "capacity": 525, "manufactureYear": 2015, "airline": "British Airways" },
+                { "_id": "F-EFGH", "model": "Boeing 777-300ER", "capacity": 396, "manufactureYear": 2019, "airline": "Air France" },
+                { "_id": "JA123", "model": "Boeing 747-8", "capacity": 467, "manufactureYear": 2017, "airline": "Japan Airlines" },
+                { "_id": "A6-XYZ", "model": "Airbus A350-1000", "capacity": 366, "manufactureYear": 2020, "airline": "Emirates" },
+                { "_id": "N67890", "model": "Boeing 737 MAX 8", "capacity": 175, "manufactureYear": 2021, "airline": "Southwest Airlines" },
+                { "_id": "VH-OQA", "model": "Airbus A330-300", "capacity": 293, "manufactureYear": 2016, "airline": "Qantas" },
+                { "_id": "Z-ABCD", "model": "Boeing 777-200LR", "capacity": 317, "manufactureYear": 2014, "airline": "South African Airways" },
+                { "_id": "P-EFGH", "model": "Airbus A321neo", "capacity": 240, "manufactureYear": 2022, "airline": "LATAM Brasil" },
+                { "_id": "PH-KLM", "model": "Boeing 787-10", "capacity": 344, "manufactureYear": 2023, "airline": "KLM Royal Dutch Airlines" },
+                { "_id": "N45678", "model": "Boeing 737-800", "capacity": 162, "manufactureYear": 2012, "airline": "Delta Air Lines" },
+                { "_id": "C-GXYZ", "model": "Airbus A321", "capacity": 190, "manufactureYear": 2018, "airline": "Air Canada" },
+                { "_id": "D-ABYA", "model": "Boeing 747-8", "capacity": 364, "manufactureYear": 2015, "airline": "Lufthansa" },
+                { "_id": "9V-SWA", "model": "Boeing 777-300ER", "capacity": 264, "manufactureYear": 2010, "airline": "Singapore Airlines" },
+                { "_id": "B-KPA", "model": "Boeing 777-300ER", "capacity": 294, "manufactureYear": 2011, "airline": "Cathay Pacific" },
+                { "_id": "A7-APA", "model": "Airbus A380", "capacity": 517, "manufactureYear": 2016, "airline": "Qatar Airways" },
+                { "_id": "HL7611", "model": "Airbus A380", "capacity": 407, "manufactureYear": 2014, "airline": "Korean Air" },
+                { "_id": "TC-JNL", "model": "Airbus A330-300", "capacity": 289, "manufactureYear": 2015, "airline": "Turkish Airlines" },
+                { "_id": "VH-YIA", "model": "Boeing 737-800", "capacity": 174, "manufactureYear": 2013, "airline": "Virgin Australia" },
+                { "_id": "N908DA", "model": "MD-90", "capacity": 158, "manufactureYear": 1998, "airline": "Delta Air Lines" }
+            ], rawDb);
+
+            rawDb.passengers = new MongoCollection('passengers', [
+                { "_id": "P1", "passportNumber": "US1234567", "firstName": "John", "lastName": "Doe", "email": "john.doe@example.com", "phoneNumber": "+15551234567" },
+                { "_id": "P2", "passportNumber": "UK9876543", "firstName": "Jane", "lastName": "Smith", "email": "jane.smith@example.com", "phoneNumber": "+447700900123" },
+                { "_id": "P3", "passportNumber": "FR4567890", "firstName": "Pierre", "lastName": "Dupont", "email": "pierre.dupont@example.com", "phoneNumber": "+33612345678" },
+                { "_id": "P4", "passportNumber": "JP1234567", "firstName": "Hiroshi", "lastName": "Tanaka", "email": "hiroshi.tanaka@example.com", "phoneNumber": "+819012345678" },
+                { "_id": "P5", "passportNumber": "AE9876543", "firstName": "Fatima", "lastName": "AlMansoori", "email": "fatima.almansoori@example.com", "phoneNumber": "+971501234567" },
+                { "_id": "P6", "passportNumber": "US2345678", "firstName": "Robert", "lastName": "Johnson", "email": "robert.johnson@example.com", "phoneNumber": "+15552345678" },
+                { "_id": "P7", "passportNumber": "UK8765432", "firstName": "Emily", "lastName": "Wilson", "email": "emily.wilson@example.com", "phoneNumber": "+447700900456" },
+                { "_id": "P8", "passportNumber": "FR5678901", "firstName": "Jean", "lastName": "Martin", "email": "jean.martin@example.com", "phoneNumber": "+33623456789" },
+                { "_id": "P9", "passportNumber": "JP2345678", "firstName": "Kenji", "lastName": "Sato", "email": "kenji.sato@example.com", "phoneNumber": "+819023456789" },
+                { "_id": "P10", "passportNumber": "AE8765432", "firstName": "Aisha", "lastName": "AlMaktoum", "email": "aisha.almaktoum@example.com", "phoneNumber": "+971502345678" },
+                { "_id": "P11", "passportNumber": "US3456789", "firstName": "David", "lastName": "Brown", "email": "david.brown@example.com", "phoneNumber": "+15553456789" },
+                { "_id": "P12", "passportNumber": "UK7654321", "firstName": "Sophie", "lastName": "Taylor", "email": "sophie.taylor@example.com", "phoneNumber": "+447700900789" },
+                { "_id": "P13", "passportNumber": "FR6789012", "firstName": "Antoine", "lastName": "Lefevre", "email": "antoine.lefevre@example.com", "phoneNumber": "+33634567890" },
+                { "_id": "P14", "passportNumber": "JP3456789", "firstName": "Yuki", "lastName": "Yamamoto", "email": "yuki.yamamoto@example.com", "phoneNumber": "+819034567890" },
+                { "_id": "P15", "passportNumber": "AE7654321", "firstName": "Sara", "lastName": "AlNahyan", "email": "sara.alnahyan@example.com", "phoneNumber": "+971503456789" },
+                { "_id": "P16", "passportNumber": "US4567890", "firstName": "Michael", "lastName": "Scott", "email": "michael.scott@example.com", "phoneNumber": "+15554567890" },
+                { "_id": "P17", "passportNumber": "UK6543210", "firstName": "Pamela", "lastName": "Beesly", "email": "pamela.beesly@example.com", "phoneNumber": "+447700900999" },
+                { "_id": "P18", "passportNumber": "CA1122334", "firstName": "Jim", "lastName": "Halpert", "email": "jim.halpert@example.com", "phoneNumber": "+14165550198" },
+                { "_id": "P19", "passportNumber": "AU9988776", "firstName": "Dwight", "lastName": "Schrute", "email": "dwight.schrute@example.com", "phoneNumber": "+61491570156" },
+                { "_id": "P20", "passportNumber": "DE4455667", "firstName": "Angela", "lastName": "Martin", "email": "angela.martin@example.com", "phoneNumber": "+4915123456789" }
+            ], rawDb);
+
+            rawDb.flights = new MongoCollection('flights', [
+                { "_id": "F1", "flightNumber": "UA100", "status": "Scheduled", "airplaneTailNumber": "N12345", "route": { "departure": { "airportCode": "JFK", "time": "2024-07-29T08:00:00Z" }, "arrival": { "airportCode": "LHR", "time": "2024-07-29T14:00:00Z" } }, "crewAssignments": [{ "employeeId": "EMP001", "role": "Pilot", "name": "Tom Cruise" }, { "employeeId": "EMP003", "role": "Co-Pilot", "name": "Brad Pitt" }], "checkIns": [{ "passportNumber": "US1234567", "passengerName": "John Doe", "baggageWeightKg": 20.5, "seatNumber": "12A" }] },
+                { "_id": "F2", "flightNumber": "BA2490", "status": "Scheduled", "airplaneTailNumber": "G-ABCD", "route": { "departure": { "airportCode": "LHR", "time": "2024-07-29T10:00:00Z" }, "arrival": { "airportCode": "JFK", "time": "2024-07-29T16:00:00Z" } }, "crewAssignments": [{ "employeeId": "EMP005", "role": "Pilot", "name": "Leonardo DiCaprio" }], "checkIns": [{ "passportNumber": "UK9876543", "passengerName": "Jane Smith", "baggageWeightKg": 15.2, "seatNumber": "24B" }] },
+                { "_id": "F3", "flightNumber": "AF456", "status": "Scheduled", "airplaneTailNumber": "F-EFGH", "route": { "departure": { "airportCode": "CDG", "time": "2024-07-29T12:00:00Z" }, "arrival": { "airportCode": "HND", "time": "2024-07-30T06:00:00Z" } }, "crewAssignments": [{ "employeeId": "EMP001", "role": "Pilot", "name": "Tom Cruise" }], "checkIns": [{ "passportNumber": "FR4567890", "passengerName": "Pierre Dupont", "baggageWeightKg": 22.8, "seatNumber": "36C" }] },
+                { "_id": "F4", "flightNumber": "JL789", "status": "Scheduled", "airplaneTailNumber": "JA123", "route": { "departure": { "airportCode": "HND", "time": "2024-07-29T14:00:00Z" }, "arrival": { "airportCode": "CDG", "time": "2024-07-30T04:00:00Z" } }, "crewAssignments": [], "checkIns": [{ "passportNumber": "JP1234567", "passengerName": "Hiroshi Tanaka", "baggageWeightKg": 18.1, "seatNumber": "48D" }] },
+                { "_id": "F5", "flightNumber": "EK123", "status": "Scheduled", "airplaneTailNumber": "A6-XYZ", "route": { "departure": { "airportCode": "DXB", "time": "2024-07-29T16:00:00Z" }, "arrival": { "airportCode": "LAX", "time": "2024-07-30T02:00:00Z" } }, "crewAssignments": [], "checkIns": [{ "passportNumber": "AE9876543", "passengerName": "Fatima AlMansoori", "baggageWeightKg": 25.3, "seatNumber": "60E" }] },
+                { "_id": "F6", "flightNumber": "WN456", "status": "Scheduled", "airplaneTailNumber": "N67890", "route": { "departure": { "airportCode": "LAX", "time": "2024-07-30T07:00:00Z" }, "arrival": { "airportCode": "SYD", "time": "2024-07-30T21:00:00Z" } }, "crewAssignments": [], "checkIns": [{ "passportNumber": "US1234567", "passengerName": "John Doe", "baggageWeightKg": 16.0, "seatNumber": "10B" }] },
+                { "_id": "F7", "flightNumber": "QF789", "status": "Scheduled", "airplaneTailNumber": "VH-OQA", "route": { "departure": { "airportCode": "SYD", "time": "2024-07-30T09:00:00Z" }, "arrival": { "airportCode": "JNB", "time": "2024-07-31T05:00:00Z" } }, "crewAssignments": [], "checkIns": [{ "passportNumber": "UK9876543", "passengerName": "Jane Smith", "baggageWeightKg": 28.5, "seatNumber": "22A" }] },
+                { "_id": "F8", "flightNumber": "SA123", "status": "Scheduled", "airplaneTailNumber": "Z-ABCD", "route": { "departure": { "airportCode": "JNB", "time": "2024-07-30T11:00:00Z" }, "arrival": { "airportCode": "GRU", "time": "2024-07-31T07:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F9", "flightNumber": "LA456", "status": "Scheduled", "airplaneTailNumber": "P-EFGH", "route": { "departure": { "airportCode": "GRU", "time": "2024-07-30T13:00:00Z" }, "arrival": { "airportCode": "AMS", "time": "2024-07-31T01:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F10", "flightNumber": "KL789", "status": "Scheduled", "airplaneTailNumber": "PH-KLM", "route": { "departure": { "airportCode": "AMS", "time": "2024-07-30T15:00:00Z" }, "arrival": { "airportCode": "JFK", "time": "2024-07-30T23:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F11", "flightNumber": "UA200", "status": "Scheduled", "airplaneTailNumber": "N12345", "route": { "departure": { "airportCode": "LHR", "time": "2024-07-30T18:00:00Z" }, "arrival": { "airportCode": "CDG", "time": "2024-07-31T06:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F12", "flightNumber": "BA150", "status": "Scheduled", "airplaneTailNumber": "G-ABCD", "route": { "departure": { "airportCode": "JFK", "time": "2024-07-30T20:00:00Z" }, "arrival": { "airportCode": "CDG", "time": "2024-07-31T08:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F13", "flightNumber": "AF789", "status": "Scheduled", "airplaneTailNumber": "F-EFGH", "route": { "departure": { "airportCode": "HND", "time": "2024-07-30T22:00:00Z" }, "arrival": { "airportCode": "DXB", "time": "2024-07-31T10:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F14", "flightNumber": "EK456", "status": "Scheduled", "airplaneTailNumber": "A6-XYZ", "route": { "departure": { "airportCode": "LAX", "time": "2024-07-31T00:00:00Z" }, "arrival": { "airportCode": "DXB", "time": "2024-07-31T12:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F15", "flightNumber": "WN123", "status": "Scheduled", "airplaneTailNumber": "N67890", "route": { "departure": { "airportCode": "SYD", "time": "2024-07-31T02:00:00Z" }, "arrival": { "airportCode": "LAX", "time": "2024-07-31T14:00:00Z" } }, "crewAssignments": [], "checkIns": [] },
+                { "_id": "F16", "flightNumber": "SQ32", "status": "Scheduled", "airplaneTailNumber": "9V-SWA", "route": { "departure": { "airportCode": "SIN", "time": "2024-08-01T08:00:00Z" }, "arrival": { "airportCode": "SFO", "time": "2024-08-01T09:30:00Z" } }, "crewAssignments": [{ "employeeId": "EMP010", "role": "Flight Attendant", "name": "Natalie Portman" }], "checkIns": [{ "passportNumber": "US4567890", "passengerName": "Michael Scott", "baggageWeightKg": 12.0, "seatNumber": "3A" }] },
+                { "_id": "F17", "flightNumber": "AC880", "status": "Scheduled", "airplaneTailNumber": "C-GXYZ", "route": { "departure": { "airportCode": "YYZ", "time": "2024-08-01T21:00:00Z" }, "arrival": { "airportCode": "CDG", "time": "2024-08-02T10:15:00Z" } }, "crewAssignments": [{ "employeeId": "EMP008", "role": "Flight Attendant", "name": "Kate Winslet" }], "checkIns": [{ "passportNumber": "UK6543210", "passengerName": "Pamela Beesly", "baggageWeightKg": 21.0, "seatNumber": "15C" }] },
+                { "_id": "F18", "flightNumber": "LH400", "status": "Scheduled", "airplaneTailNumber": "D-ABYA", "route": { "departure": { "airportCode": "FRA", "time": "2024-08-02T10:45:00Z" }, "arrival": { "airportCode": "JFK", "time": "2024-08-02T13:20:00Z" } }, "crewAssignments": [], "checkIns": [{ "passportNumber": "CA1122334", "passengerName": "Jim Halpert", "baggageWeightKg": 18.5, "seatNumber": "15D" }] },
+                { "_id": "F19", "flightNumber": "QR83", "status": "Scheduled", "airplaneTailNumber": "A7-APA", "route": { "departure": { "airportCode": "DOH", "time": "2024-08-02T08:15:00Z" }, "arrival": { "airportCode": "JFK", "time": "2024-08-02T15:00:00Z" } }, "crewAssignments": [], "checkIns": [{ "passportNumber": "AU9988776", "passengerName": "Dwight Schrute", "baggageWeightKg": 29.5, "seatNumber": "1A" }] },
+                { "_id": "F20", "flightNumber": "CX876", "status": "Scheduled", "airplaneTailNumber": "B-KPA", "route": { "departure": { "airportCode": "HKG", "time": "2024-08-03T00:15:00Z" }, "arrival": { "airportCode": "SFO", "time": "2024-08-02T21:40:00Z" } }, "crewAssignments": [], "checkIns": [{ "passportNumber": "DE4455667", "passengerName": "Angela Martin", "baggageWeightKg": 14.0, "seatNumber": "10C" }] }
+            ], rawDb);
+
+            // Create a PROXY to simulate MongoDB's dynamic collections
+            // i.e., db.nonExistentCollection.insertOne(...) will auto-create the collection
+            db = new Proxy(rawDb, {
+                get: function(target, prop) {
+                    if (prop === 'createCollection') {
+                        return function(name) {
+                            if (!target[name]) target[name] = new MongoCollection(name, [], target);
+                            return { ok: 1 };
+                        };
+                    }
+                    if (prop in target) return target[prop];
+                    if (typeof prop === 'symbol' || prop === 'inspect') return undefined;
+
+                    // Implicit creation!
+                    target[prop] = new MongoCollection(prop, [], target);
+                    return target[prop];
+                }
+            });
+
+            updateSchemaPanel();
+            printToConsole("Database reset successfully. 20 documents loaded per collection.");
+        }
+
+
+        // ==========================================
+        // 3. UI & CONSOLE CONTROLLER
+        // ==========================================
+
+        const sqlInput = document.getElementById('sql-input');
+        const consoleOut = document.getElementById('output-console');
+        const contextMenu = document.getElementById('context-menu');
+        let ctxCollection = '';
+
+        function syntaxHighlightJSON(json) {
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        function printToConsole(data) {
+            let formatted = '';
+            if (typeof data === 'object' && data !== null) {
+                let toFormat = data.results ? data.results : data;
+                formatted = syntaxHighlightJSON(JSON.stringify(toFormat, null, 2));
+            } else {
+                formatted = `<span class="json-boolean">${data}</span>`;
+            }
+            consoleOut.innerHTML += `\n\n> <span style="color:#fde047">Execution Result:</span>\n${formatted}`;
+            consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+
+        function clearConsole() {
+            consoleOut.innerHTML = "Console cleared.";
+        }
+
+        function runQuery() {
+            let code = sqlInput.value.trim();
+            if(!code) return;
+            
+            try {
+                let result = eval(code);
+                if (result !== undefined) {
+                    printToConsole(result);
+                } else {
+                    printToConsole("Command executed (no return value).");
+                }
+                updateSchemaPanel();
+            } catch (err) {
+                printToConsole(`<span style="color:#ef4444">Error: ${err.message}</span>`);
+            }
+        }
+
+        function updateSchemaPanel() {
+            const tree = document.getElementById('schema-tree');
+            tree.innerHTML = '';
+            // Iterate rawDb to avoid triggering Proxy auto-creation
+            for (let colName in rawDb) {
+                let col = rawDb[colName];
+                let count = col.count();
+                
+                let details = document.createElement('details');
+                let summary = document.createElement('summary');
+                summary.innerHTML = `📁 ${colName} <span class="collection-count">${count} docs</span>`;
+                
+                summary.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    ctxCollection = colName;
+                    contextMenu.style.display = 'block';
+                    contextMenu.style.left = e.pageX + 'px';
+                    contextMenu.style.top = e.pageY + 'px';
+                });
+
+                details.appendChild(summary);
+                
+                if (count > 0) {
+                    let docList = document.createElement('div');
+                    docList.className = 'doc-list';
+                    
+                    col.data.forEach((doc, idx) => {
+                        let docDetails = document.createElement('details');
+                        let docSummary = document.createElement('summary');
+                        docSummary.className = 'doc-summary';
+                        
+                        let previewStr = JSON.stringify(doc);
+                        if(previewStr.length > 40) previewStr = previewStr.substring(0, 38) + "... }";
+                        docSummary.innerText = `[${idx}] ${previewStr}`;
+                        
+                        let docPre = document.createElement('pre');
+                        docPre.className = 'doc-pre';
+                        docPre.innerHTML = syntaxHighlightJSON(JSON.stringify(doc, null, 2));
+                        
+                        docDetails.appendChild(docSummary);
+                        docDetails.appendChild(docPre);
+                        docList.appendChild(docDetails);
+                    });
+                    
+                    details.appendChild(docList);
+                }
+                
+                tree.appendChild(details);
+            }
+        }
+
+        window.addEventListener('click', () => { contextMenu.style.display = 'none'; });
+
+        function ctxAction(action) {
+            let code = '';
+            if (action === 'find') code = `db.${ctxCollection}.find()`;
+            if (action === 'count') code = `db.${ctxCollection}.count()`;
+            if (action === 'drop') code = `db.${ctxCollection}.drop()`;
+            
+            sqlInput.value = code;
+            runQuery();
+        }
+
+        function resetDB() {
+            initDatabase();
+            sqlInput.value = "// Database Reset.\ndb.airports.find()";
+        }
+
+        // --- 35 Task Snippets ---
+        const snippets = {
+            t1: `db.airports.find()`,
+            t2: `db.airports.find({"airportCode": "JFK"})`,
+            t3: `db.airports.find({"location.city": "London"})`,
+            t4: `db.airplanes.find({"capacity": 525})`,
+            t5: `db.flights.find({"status": "Scheduled"})`,
+            t6: `db.passengers.find({}, {"firstName": 1, "lastName": 1, "_id": 0})`,
+            t7: `db.airplanes.find({"capacity": {$gt: 300}})`,
+            t8: `db.airplanes.find({"manufactureYear": {$lt: 2018}})`,
+            t9: `db.airports.find({"location.country": {$in: ["USA", "UK"]}})`,
+            t10: `db.passengers.find().count()`,
+            t11: `db.airports.find({"baggageHandlers.firstName": "Mike"})`,
+            t12: `db.flights.find({"route.departure.airportCode": "CDG"})`,
+            t13: `db.flights.find({"route.departure.airportCode": "LHR", "route.arrival.airportCode": "JFK"})`,
+            t14: `db.flights.find({"checkIns.passengerName": "John Doe"})`,
+            t15: `db.airplanes.findOne()`,
+            t16: `db.airplanes.insertOne({"model": "Boeing 737", "capacity": 150, "airline": "Delta"})`,
+            t17: `db.passengers.insertMany([\n  {"firstName": "Alice", "lastName": "Wonder"},\n  {"firstName": "Bob", "lastName": "Builder"}\n])`,
+            t18: `db.airports.insertOne({"airportCode": "SFO", "retailEstablishments": [{"name": "SFO Cafe", "type": "Restaurant"}]})`,
+            t19: `db.flights.updateOne({"flightNumber": "UA100"}, {$set: {"status": "Delayed"}})`,
+            t20: `db.airports.updateOne({"airportCode": "JFK"}, {$set: {"location.latitude": 40.0000}})`,
+            t21: `db.airports.updateOne({"airportCode": "JFK"}, {$push: {"retailEstablishments": {"name": "Dunkin", "type": "Restaurant"}}})`,
+            t22: `db.airplanes.updateMany({"manufactureYear": {$lt: 2016}}, {$set: {"needsInspection": true}})`,
+            t23: `db.flights.updateOne({"flightNumber": "AF456"}, {$push: {"checkIns": {"passengerName": "Jane Smith"}}})`,
+            t24: `db.passengers.deleteOne({"passportNumber": "US1234567"})`,
+            t25: `db.airplanes.deleteMany({"capacity": {$lt: 200}})`,
+            t26: `db.airplanes.aggregate([\n  {$group: {_id: "$airline", count: {$sum: 1}}}\n])`,
+            t27: `db.airplanes.aggregate([\n  {$group: {_id: null, totalCapacity: {$sum: "$capacity"}}}\n])`,
+            t28: `db.airplanes.aggregate([\n  {$match: {"model": "Boeing 787-9"}},\n  {$group: {_id: "$model", avgCap: {$avg: "$capacity"}}}\n])`,
+            t29: `db.airplanes.aggregate([\n  {$group: {_id: "$airline", fleet: {$sum: 1}}},\n  {$sort: {"fleet": -1}}\n])`,
+            t30: `db.passengers.drop()`,
+            t31: `db.createCollection("audit_logs")`,
+            t32: `db.audit_logs.insertOne({"action": "System Boot", "timestamp": "2024-01-01"})`,
+            t33: `db.audit_logs.deleteMany({}) // Empties the collection, but it still exists!`,
+            t34: `db.audit_logs.drop() // Removes the collection entirely.`,
+            t35: `db.vip_lounges.insertOne({"name": "Emirates First Class", "location": "DXB"}) // Implicit Creation!`
+        };
+
+        function loadSnippet(id) {
+            sqlInput.value = snippets[id];
+            sqlInput.focus();
+        }
+
+        sqlInput.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runQuery();
+        });
+
+        // Init
+        initDatabase();
+    </script>
+</body>
+</html>
