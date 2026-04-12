@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph DB Lab: Neo4j Airport Management</title>
+    <!-- Vis.js for Graph Visualization -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --border: #334155;
+            --primary: #38bdf8; /* Electric Blue for Neo4j */
+            --primary-hover: #0284c7;
+            --text: #f8fafc;
+            --code-bg: #000000;
+            --code-text: #a7f3d0;
+            --accent: #fde047;
+            --error: #f43f5e;
+            --success: #34d399;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; flex-direction: row; width: 100vw; height: 100vh; background-color: var(--bg-color); color: var(--text); overflow: hidden; }
+        
+        /* Layout */
+        #left-panel { flex: 0 0 25%; min-width: 300px; max-width: 40%; resize: horizontal; overflow-y: auto; background: var(--panel-bg); border-right: 2px solid var(--border); padding: 20px; display: flex; flex-direction: column; }
+        #center-panel { flex: 1 1 50%; display: flex; flex-direction: column; min-width: 0; }
+        #right-panel { flex: 0 0 25%; min-width: 300px; background: var(--panel-bg); border-left: 2px solid var(--border); display: flex; flex-direction: column; }
+
+        #editor-pane { height: 45%; border-bottom: 2px solid var(--border); display: flex; flex-direction: column; background: var(--panel-bg); }
+        #results-pane { height: 55%; background: #020617; overflow: auto; padding: 15px; font-family: monospace; color: #e2e8f0; font-size: 0.95rem; }
+        
+        /* Typography */
+        h1 { font-size: 1.4rem; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 15px; color: var(--primary); }
+        h2 { font-size: 1.1rem; color: var(--accent); margin-bottom: 10px; }
+        p { margin-bottom: 10px; line-height: 1.4; font-size: 0.85rem; color: #cbd5e1; }
+        code { background: #000; padding: 2px 4px; border-radius: 4px; font-family: monospace; color: #fde047; }
+        
+        /* Interactive Elements */
+        textarea { width: 100%; flex-grow: 1; background: var(--code-bg); color: var(--code-text); font-family: 'Courier New', Courier, monospace; font-size: 1.05rem; padding: 15px; border: none; resize: none; outline: none; }
+        .controls { padding: 10px; background: var(--bg-color); display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--border); }
+        button { background: var(--primary); color: #1e1b4b; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 0.85rem; }
+        button:hover { background: var(--primary-hover); }
+        button.secondary { background: #4f46e5; color: #fff; }
+        button.secondary:hover { background: #6366f1; }
+        
+        /* Tasks */
+        .task-box { background: var(--code-bg); border: 1px solid var(--border); border-left: 4px solid var(--primary); padding: 15px; margin-bottom: 15px; border-radius: 4px; opacity: 0.5; pointer-events: none; transition: 0.3s; }
+        .task-box.active { opacity: 1; pointer-events: auto; box-shadow: 0 0 15px rgba(192, 132, 252, 0.3); }
+        .task-box.completed { opacity: 0.8; border-left-color: var(--success); pointer-events: auto; }
+        .threshold { background: rgba(56, 189, 248, 0.1); padding: 8px; border-radius: 4px; border-left: 2px solid var(--accent); margin-top: 10px; font-size: 0.8rem; }
+        .stats { display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: bold; margin-bottom: 15px; background: var(--code-bg); padding: 10px; border-radius: 4px; }
+        .attempts { color: var(--error); }
+        
+        #mynetwork { width: 100%; height: 100%; background: #020617; }
+        .vis-header { background: var(--panel-bg); color: #fff; padding: 10px; text-align: center; font-weight: bold; border-bottom: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+
+    <!-- LEFT PANEL: Tasks -->
+    <div id="left-panel">
+        <h1>⬡ Neo4j Graph ✈️ Lab@ULaw</h1>
+        <div class="stats">
+            <span>Score: <span id="score">0</span>/50</span>
+            <span class="attempts">Fails: <span id="fails">0</span>/3</span>
+        </div>
+        <p>Complete tasks to unlock the next. 3 fails unlocks the answer.</p>
+        <div id="task-container"></div>
+    </div>
+
+    <!-- CENTER PANEL: Editor & Results -->
+    <div id="center-panel">
+        <div class="controls">
+            <button onclick="runQuery()">▶ Run Cypher (Ctrl+Enter)</button>
+            <button class="secondary" onclick="resetGame()" style="margin-left:auto; background:var(--error);">Reset Progress</button>
+        </div>
+        <div id="editor-pane">
+            <textarea id="cypher-input" spellcheck="false">// Type your Cypher queries here using ASCII-art syntax!
+// E.g., MATCH (n) RETURN n</textarea>
+        </div>
+        <div id="results-pane">
+            <div id="output-console" style="white-space: pre-wrap;">System Initialised. Graph loaded into memory.</div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: Graph Visualization -->
+    <div id="right-panel">
+        <div class="vis-header">Live Graph Visualisation</div>
+        <div id="mynetwork"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. GRAPH ENGINE & VIS.JS INTEGRATION
+        // ==========================================
+        let nodes = new vis.DataSet([]);
+        let edges = new vis.DataSet([]);
+        let network = null;
+        let nodeIdCounter = 1;
+
+        function initGraph() {
+            nodes.clear(); edges.clear();
+            // Pre-seed some initial data
+            nodes.add([
+                { id: 1, label: 'Airport', title: 'JFK (New York)', color: '#38bdf8' },
+                { id: 2, label: 'Airport', title: 'LHR (London)', color: '#38bdf8' },
+                { id: 3, label: 'Flight', title: 'UA100', color: '#fba918' },
+                { id: 4, label: 'Person', title: 'John Doe', color: '#34d399' }
+            ]);
+            edges.add([
+                { id: 1, from: 3, to: 1, label: 'DEPARTS_FROM', font: {align: 'middle'} },
+                { id: 2, from: 3, to: 2, label: 'ARRIVES_AT', font: {align: 'middle'} },
+                { id: 3, from: 4, to: 3, label: 'BOOKED', font: {align: 'middle'} }
+            ]);
+            nodeIdCounter = 5;
+
+            const container = document.getElementById('mynetwork');
+            const data = { nodes: nodes, edges: edges };
+            const options = {
+                physics: { stabilization: true, barnesHut: { springLength: 150 } },
+                nodes: { shape: 'dot', size: 25, font: { size: 14, color: '#f8fafc' }, borderWidth: 2 },
+                edges: { arrows: 'to', width: 2, font: { size: 12, color: '#94a3b8', strokeWidth: 0 }, color: '#475569' }
+            };
+            network = new vis.Network(container, data, options);
+        }
+
+        // Simulated Cypher Execution (Mutates the visual graph based on patterns)
+        function simulateCypher(query) {
+            let q = query.trim().replace(/\s+/g, ' ');
+            
+            // Pattern: MATCH (n) DETACH DELETE n
+            if (/MATCH\s*\(n\)\s*DETACH\s*DELETE\s*n/i.test(q)) {
+                nodes.clear(); edges.clear(); return "Graph cleared.";
+            }
+
+            // Pattern: CREATE (n:Label {props})
+            let createNodeMatch = q.match(/CREATE\s*\([a-zA-Z0-9_]*\s*:\s*([A-Za-z0-9_]+)\s*(?:\{([^}]*)\})?\)/i);
+            if (createNodeMatch && !q.toUpperCase().includes('MATCH')) {
+                let label = createNodeMatch[1];
+                let color = label.toUpperCase() === 'AIRPORT' ? '#38bdf8' : label.toUpperCase() === 'FLIGHT' ? '#fba918' : '#34d399';
+                nodes.add({ id: nodeIdCounter++, label: label, title: createNodeMatch[2] || 'Node', color: color });
+                return `Created 1 node with label :${label}.`;
+            }
+
+            // Pattern: CREATE (a)-[:REL]->(b) (Visual Mock)
+            let createRelMatch = q.match(/CREATE\s*\([a-zA-Z0-9_]+\)\s*-\[\s*:\s*([A-Za-z0-9_]+)\s*\]->\s*\([a-zA-Z0-9_]+\)/i);
+            if (createRelMatch) {
+                // visually pick two random unconnected nodes to connect to simulate
+                let nIds = nodes.getIds();
+                if(nIds.length >= 2) edges.add({ from: nIds[0], to: nIds[nIds.length-1], label: createRelMatch[1] });
+                return `Created relationship [:${createRelMatch[1]}].`;
+            }
+
+            return "Query executed (Results matched pattern).";
+        }
+
+        // ==========================================
+        // 2. 50 GAMIFIED TASKS
+        // ==========================================
+        const taskData = [
+            // PART 1: NODES (1-10)
+            { title: "1. The Property Graph", q: "Graph databases model entities as Nodes. Create an Airport node.", h: "CREATE (a:Airport)", rx: /CREATE\s*\(\s*[a-zA-Z0-9_]*\s*:\s*Airport\s*\)/i, t: "Nodes replace tables/documents. They physically exist independently." },
+            { title: "2. Adding Properties", q: "Create a Person node with name 'Alice'.", h: "CREATE (p:Person {name: 'Alice'})", rx: /CREATE\s*\(\s*[a-zA-Z0-9_]*\s*:\s*Person\s*\{\s*name\s*:\s*['"]Alice['"]\s*\}\s*\)/i, t: "Properties are key-value pairs stored directly on the node (like JSON fields)." },
+            { title: "3. Creating a Flight", q: "Create a Flight node with number 'UA200'.", h: "CREATE (f:Flight {number: 'UA200'})", rx: /CREATE\s*\(\s*[a-zA-Z0-9_]*\s*:\s*Flight\s*\{\s*number\s*:\s*['"]UA200['"]\s*\}\s*\)/i, t: "Unlike SQL, we don't need a pre-defined schema to insert this flight." },
+            { title: "4. The MATCH Clause", q: "MATCH is the SELECT of Cypher. Find all Airport nodes and RETURN them.", h: "MATCH (a:Airport) RETURN a", rx: /MATCH\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Airport\s*\)\s*RETURN/i, t: "MATCH searches the graph for topological patterns." },
+            { title: "5. Filtering inline", q: "Find the Person named 'Alice' by placing the property inside the MATCH pattern.", h: "MATCH (p:Person {name: 'Alice'}) RETURN p", rx: /MATCH\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Person\s*\{\s*name\s*:\s*['"]Alice['"]\s*\}\s*\)\s*RETURN/i, t: "Cypher embraces 'ASCII art' - the query looks like the data you want." },
+            { title: "6. Filtering with WHERE", q: "Find a Flight using the WHERE clause where number = 'UA100'.", h: "MATCH (f:Flight) WHERE f.number = 'UA100' RETURN f", rx: /MATCH\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Flight\s*\)\s*WHERE\s+[a-zA-Z0-9_]+\.number\s*=\s*['"]UA100['"]\s*RETURN/i, t: "WHERE behaves exactly like SQL, filtering matched patterns." },
+            { title: "7. Returning Properties", q: "Match all Passengers, but only RETURN their names (not the whole node).", h: "MATCH (p:Passenger) RETURN p.name", rx: /MATCH\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Passenger\s*\)\s*RETURN\s+[a-zA-Z0-9_]+\.name/i, t: "Returning properties is akin to SQL Projection (SELECT name FROM...)." },
+            { title: "8. Multiple Labels", q: "Nodes can have multiple labels. Create a node labeled both Crew and Pilot.", h: "CREATE (c:Crew:Pilot)", rx: /CREATE\s*\(\s*[a-zA-Z0-9_]*\s*:\s*Crew\s*:\s*Pilot\s*\)/i, t: "In SQL, this requires junction tables. In Neo4j, just chain labels!" },
+            { title: "9. Counting Nodes", q: "Use count() to find the total number of Airport nodes.", h: "MATCH (a:Airport) RETURN count(a)", rx: /MATCH\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Airport\s*\)\s*RETURN\s*count\(/i, t: "Aggregations in Cypher work similarly to SQL and MongoDB." },
+            { title: "10. Limit Results", q: "Match all Flights but LIMIT the return to 5.", h: "MATCH (f:Flight) RETURN f LIMIT 5", rx: /MATCH.*RETURN.*LIMIT\s+5/i, t: "Always limit queries on large graphs to prevent memory bloat." },
+            
+            // PART 2: RELATIONSHIPS (11-20)
+            { title: "11. The Arrow Syntax", q: "Relationships are arrows: `()-[r]->()`. Write a MATCH to find any two connected nodes.", h: "MATCH (a)-[r]->(b) RETURN a,b", rx: /MATCH\s*\(\s*[a-zA-Z0-9_]+\s*\)\s*-\s*\[\s*[a-zA-Z0-9_]*\s*\]\s*->\s*\(\s*[a-zA-Z0-9_]+\s*\)\s*RETURN/i, t: "Relationships are first-class citizens. They are stored physically as pointers." },
+            { title: "12. Typed Relationships", q: "Find what Flights depart from an Airport. The relationship type is DEPARTS_FROM.", h: "MATCH (f:Flight)-[:DEPARTS_FROM]->(a:Airport) RETURN f, a", rx: /MATCH\s*\([a-zA-Z0-9_]*\s*:\s*Flight\)\s*-\s*\[\s*:\s*DEPARTS_FROM\s*\]\s*->\s*\([a-zA-Z0-9_]*\s*:\s*Airport\)/i, t: "Relationship types (verbs) act like tables replacing Foreign Keys." },
+            { title: "13. Undirected Queries", q: "Omit the arrowhead `-[]-` to find connected nodes regardless of direction.", h: "MATCH (a)-[:BOOKED]-(b) RETURN a", rx: /MATCH\s*\([a-zA-Z0-9_]*\)\s*-\s*\[\s*:\s*BOOKED\s*\]\s*-\s*\([a-zA-Z0-9_]*\)/i, t: "Neo4j traverses undirected queries instantly in both directions." },
+            { title: "14. Creating Relationships", q: "Create a BOOKED relation between an existing Person (Alice) and Flight (UA100).", h: "MATCH (p:Person {name:'Alice'}), (f:Flight {number:'UA100'}) CREATE (p)-[:BOOKED]->(f)", rx: /MATCH.*CREATE\s*\([a-zA-Z0-9_]+\)\s*-\s*\[\s*:\s*BOOKED\s*\]\s*->\s*\([a-zA-Z0-9_]+\)/i, t: "Always MATCH existing nodes before applying CREATE to link them." },
+            { title: "15. Relationship Properties", q: "Relationships can hold data! Find a BOOKED relation and return its 'date' property.", h: "MATCH ()-[r:BOOKED]->() RETURN r.date", rx: /MATCH\s*\(\s*\)\s*-\s*\[\s*[a-zA-Z0-9_]+\s*:\s*BOOKED\s*\]\s*->\s*\(\s*\)\s*RETURN\s+[a-zA-Z0-9_]+\.date/i, t: "Food for thought: In SQL, edge properties require a bridging table. Here, it's native." },
+            { title: "16. Chaining Paths", q: "Match a 3-node path: Person -> BOOKED -> Flight -> ARRIVES_AT -> Airport.", h: "MATCH (p:Person)-[:BOOKED]->(f:Flight)-[:ARRIVES_AT]->(a:Airport) RETURN p,a", rx: /MATCH\s*\([a-zA-Z0-9_]*\s*:\s*Person\)\s*-\s*\[\s*:\s*BOOKED\s*\]\s*->\s*\([a-zA-Z0-9_]*\s*:\s*Flight\)\s*-\s*\[\s*:\s*ARRIVES_AT\s*\]\s*->\s*\([a-zA-Z0-9_]*\s*:\s*Airport\)/i, t: "This replaces two heavy SQL JOINs with a single visual hop." },
+            { title: "17. Assigning Path to Variable", q: "Assign an entire matched path to the variable `p` and RETURN p.", h: "MATCH p = ()-[:DEPARTS_FROM]->() RETURN p", rx: /MATCH\s+[a-zA-Z0-9_]+\s*=\s*\(\s*\)\s*-\s*\[\s*:\s*[A-Z_]+\s*\]\s*->\s*\(\s*\)\s*RETURN/i, t: "Returning 'p' gives the client all nodes and edges in that sequence." },
+            { title: "18. Filtering by Relationship", q: "Find Persons who have NOT BOOKED a Flight. (Use WHERE NOT).", h: "MATCH (p:Person) WHERE NOT (p)-[:BOOKED]->(:Flight) RETURN p", rx: /MATCH\s*\([a-zA-Z0-9_]+\s*:\s*Person\)\s*WHERE\s+NOT\s*\([a-zA-Z0-9_]+\)\s*-\s*\[\s*:\s*BOOKED\s*\]\s*->/i, t: "Structural filtering allows querying graph shape, impossible in Document DBs." },
+            { title: "19. Multiple Relationship Types", q: "Match a relationship that is either DEPARTS_FROM or ARRIVES_AT using the `|` OR operator.", h: "MATCH ()-[r:DEPARTS_FROM|ARRIVES_AT]->() RETURN r", rx: /MATCH\s*\(\s*\)\s*-\s*\[\s*[a-zA-Z0-9_]*\s*:\s*DEPARTS_FROM\s*\|\s*ARRIVES_AT\s*\]\s*->/i, t: "The pipe `|` allows matching multiple types simultaneously." },
+            { title: "20. Self-Connecting Nodes", q: "Create an Airport that CONNECTS_TO itself (a cycle).", h: "MATCH (a:Airport {code:'JFK'}) CREATE (a)-[:CONNECTS_TO]->(a)", rx: /CREATE\s*\([a-zA-Z0-9_]+\)\s*-\s*\[\s*:\s*CONNECTS_TO\s*\]\s*->\s*\(\1\)/i, t: "Graphs handle cycles naturally; SQL struggles heavily with hierarchical self-joins." },
+
+            // PART 3: UPDATING & DELETING (21-30)
+            { title: "21. Setting Properties", q: "Use SET to update an Airport's city to 'Paris'.", h: "MATCH (a:Airport) SET a.city = 'Paris'", rx: /MATCH.*SET\s+[a-zA-Z0-9_]+\.city\s*=\s*['"]Paris['"]/i, t: "SET operates exactly like UPDATE ... SET in SQL." },
+            { title: "22. Adding Labels", q: "Use SET to add the label 'Hub' to an existing Airport.", h: "MATCH (a:Airport) SET a:Hub", rx: /MATCH.*SET\s+[a-zA-Z0-9_]+\s*:\s*Hub/i, t: "Labels can be dynamically added/removed, unlike SQL table structures." },
+            { title: "23. Removing Properties", q: "Use REMOVE to delete the 'city' property from an Airport.", h: "MATCH (a:Airport) REMOVE a.city", rx: /MATCH.*REMOVE\s+[a-zA-Z0-9_]+\.city/i, t: "Graph nodes are schema-less (like MongoDB). Properties can vanish." },
+            { title: "24. Basic Delete", q: "DELETE an isolated Person node.", h: "MATCH (p:Person {name: 'Alice'}) DELETE p", rx: /MATCH.*DELETE\s+[a-zA-Z0-9_]+/i, t: "DELETE fails if the node has relationships (safety mechanism)." },
+            { title: "25. Delete Relationship", q: "Match a BOOKED relationship and DELETE it.", h: "MATCH ()-[r:BOOKED]->() DELETE r", rx: /MATCH.*-\s*\[\s*([a-zA-Z0-9_]+)\s*:\s*BOOKED\s*\]\s*->.*DELETE\s+\1/i, t: "Edges can be deleted without affecting the nodes." },
+            { title: "26. DETACH DELETE", q: "To delete a node AND all its connections, use DETACH DELETE.", h: "MATCH (f:Flight {number: 'UA100'}) DETACH DELETE f", rx: /MATCH.*DETACH\s+DELETE\s+[a-zA-Z0-9_]+/i, t: "This automatically performs a cascading delete of foreign keys." },
+            { title: "27. Upserting with MERGE", q: "MERGE creates a pattern if it doesn't exist. MERGE an Airport with code 'DXB'.", h: "MERGE (a:Airport {code: 'DXB'})", rx: /MERGE\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Airport\s*\{\s*code\s*:\s*['"]DXB['"]\s*\}\s*\)/i, t: "MERGE is the graph equivalent of 'INSERT IGNORE' or Upsert." },
+            { title: "28. MERGE Relationships", q: "MERGE a connection between two existing airports.", h: "MATCH (a), (b) MERGE (a)-[:ROUTE]->(b)", rx: /MERGE\s*\([a-zA-Z0-9_]+\)\s*-\s*\[\s*:\s*ROUTE\s*\]\s*->\s*\([a-zA-Z0-9_]+\)/i, t: "Prevents creating duplicate relationships between the same nodes." },
+            { title: "29. ON CREATE SET", q: "Use MERGE ... ON CREATE SET to set a timestamp when a node is first created.", h: "MERGE (p:Person) ON CREATE SET p.created = timestamp()", rx: /MERGE.*ON\s+CREATE\s+SET/i, t: "Allows conditional logic based on whether MERGE found or created data." },
+            { title: "30. Delete Everything", q: "The infamous clear-DB query: MATCH (n) DETACH DELETE n.", h: "MATCH (n) DETACH DELETE n", rx: /MATCH\s*\([a-zA-Z0-9_]+\)\s*DETACH\s+DELETE\s+[a-zA-Z0-9_]+/i, t: "Look at the right panel! The graph is wiped clean." },
+
+            // PART 4: ADVANCED PATTERNS (31-40)
+            { title: "31. The Recommendation Engine", q: "Find what flights other people took who also booked UA100. Pattern: f1 <- BOOKED - Person - BOOKED -> f2", h: "MATCH (f1:Flight)<-[:BOOKED]-(p:Person)-[:BOOKED]->(f2:Flight)", rx: /MATCH\s*\([a-zA-Z0-9_]*\s*:\s*Flight\)\s*<-\s*\[\s*:\s*BOOKED\s*\]\s*-\s*\([a-zA-Z0-9_]*\s*:\s*Person\)\s*-\s*\[\s*:\s*BOOKED\s*\]\s*->\s*\([a-zA-Z0-9_]*\s*:\s*Flight\)/i, t: "This is a collaborative filtering algorithm implemented in a single line!" },
+            { title: "32. Variable Length Paths", q: "Find friends-of-friends up to 3 hops away: -[:KNOWS*1..3]->", h: "MATCH (p:Person)-[:KNOWS*1..3]->(f) RETURN f", rx: /MATCH\s*\([a-zA-Z0-9_]*\s*:\s*Person\)\s*-\s*\[\s*:\s*KNOWS\s*\*\s*1\.\.3\s*\]\s*->/i, t: "SQL requires recursive CTEs for this. Graph DBs do it natively." },
+            { title: "33. Any Depth", q: "Find any flight route from JFK to SYD, no matter how many layovers. Use `-[*]->`.", h: "MATCH (a:Airport {code:'JFK'})-[*]->(b:Airport {code:'SYD'})", rx: /MATCH\s*\([a-zA-Z0-9_]*\s*:\s*Airport.*-\s*\[\s*\*\s*\]\s*->.*Airport/i, t: "The asterisk * means 'traverse until you find it'." },
+            { title: "34. Shortest Path", q: "Use the shortestPath() function to find the quickest route between two airports.", h: "MATCH p = shortestPath((a:Airport)-[*]->(b:Airport))", rx: /shortestPath\s*\(\s*\([a-zA-Z0-9_]*\s*:\s*Airport/i, t: "Built-in graph algorithms calculate paths faster than relational DBs." },
+            { title: "35. Count Relationships", q: "Find the airport with the most DEPARTS_FROM relationships (degree centrality).", h: "MATCH (a:Airport)<-[r:DEPARTS_FROM]-() RETURN a, count(r)", rx: /RETURN\s+[a-zA-Z0-9_]+\s*,\s*count\(/i, t: "Degree centrality helps find the most critical nodes (hubs) in a network." },
+            { title: "36. Pattern Comprehensions", q: "Extract a list of destinations for an airport using [(a)-->(b) | b.code].", h: "MATCH (a:Airport) RETURN [(a)-->(b) | b.code]", rx: /RETURN\s*\[\s*\(\s*[a-zA-Z0-9_]+\s*\)\s*-->/i, t: "Generates inline arrays without GROUP BY." },
+            { title: "37. WITH Clause", q: "WITH allows query pipelining. Filter airports WITH > 5 flights.", h: "MATCH (a)<-[r]-() WITH a, count(r) AS c WHERE c > 5 RETURN a", rx: /WITH\s+[a-zA-Z0-9_]+\s*,\s*count\(.*WHERE/i, t: "WITH acts like the HAVING clause in SQL." },
+            { title: "38. String Matching", q: "Find an Airport where the name STARTS WITH 'John'.", h: "MATCH (a:Airport) WHERE a.name STARTS WITH 'John' RETURN a", rx: /STARTS\s+WITH\s+['"]John['"]/i, t: "Replaces the SQL LIKE 'John%' operator." },
+            { title: "39. Sorting", q: "ORDER BY the number of flights descending.", h: "MATCH (f:Flight) RETURN f ORDER BY f.number DESC", rx: /ORDER\s+BY\s+[a-zA-Z0-9_.]+\s+DESC/i, t: "Standard SQL-like sorting." },
+            { title: "40. Skipping Results", q: "SKIP the first 2 results (pagination).", h: "MATCH (f:Flight) RETURN f SKIP 2 LIMIT 5", rx: /SKIP\s+2/i, t: "Pagination works exactly like OFFSET in SQL." },
+
+            // PART 5: CONSTRAINTS & ANALYTICS (41-50)
+            { title: "41. Unique Constraints", q: "Ensure Airport codes are unique: CREATE CONSTRAINT FOR (a:Airport) REQUIRE a.code IS UNIQUE", h: "CREATE CONSTRAINT FOR (a:Airport) REQUIRE a.code IS UNIQUE", rx: /CREATE\s+CONSTRAINT\s+FOR\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Airport\s*\)\s*REQUIRE\s+[a-zA-Z0-9_]+\.code\s+IS\s+UNIQUE/i, t: "Maintains data integrity at the schema level." },
+            { title: "42. Indexing", q: "Create an index on Flight numbers to speed up MATCH queries.", h: "CREATE INDEX FOR (f:Flight) ON (f.number)", rx: /CREATE\s+INDEX\s+FOR\s*\(\s*[a-zA-Z0-9_]+\s*:\s*Flight\s*\)\s*ON\s*\(\s*[a-zA-Z0-9_]+\.number\s*\)/i, t: "Graphs traverse fast, but finding the starting node requires indexes." },
+            { title: "43. Load CSV", q: "Graph DBs ingest tables using LOAD CSV. Write the syntax.", h: "LOAD CSV WITH HEADERS FROM 'url' AS row", rx: /LOAD\s+CSV\s+WITH\s+HEADERS\s+FROM/i, t: "Maps row data into CREATE/MERGE node commands." },
+            { title: "44. Unwind Arrays", q: "UNWIND turns a list [1,2,3] into individual rows. Try it.", h: "UNWIND [1,2,3] AS x RETURN x", rx: /UNWIND\s+\[.*\]\s+AS\s+[a-zA-Z0-9_]+\s+RETURN/i, t: "Opposite of collect() - exactly like MongoDB's $unwind." },
+            { title: "45. Exists()", q: "Check if a property exists: WHERE exists(n.age).", h: "MATCH (n) WHERE exists(n.age) RETURN n", rx: /WHERE\s+exists\(/i, t: "Schema-less graphs require runtime existence checks." },
+            { title: "46. Coalesce", q: "Provide a fallback value if a property is null using coalesce(n.age, 0).", h: "RETURN coalesce(n.age, 0)", rx: /coalesce\(/i, t: "Graceful error handling for missing properties." },
+            { title: "47. Graph Traversal Profile", q: "Prepend EXPLAIN or PROFILE to see the execution plan.", h: "PROFILE MATCH (n) RETURN n", rx: /(?:PROFILE|EXPLAIN)\s+MATCH/i, t: "Crucial for identifying slow queries traversing too many edges." },
+            { title: "48. Community Detection", q: "Neo4j uses algo packages. Pretend to call a Louvain community algorithm.", h: "CALL algo.louvain('Person', 'KNOWS')", rx: /CALL\s+algo\./i, t: "Graph analytics reveal hidden clusters that SQL cannot see." },
+            { title: "49. PageRank", q: "Call the PageRank algorithm to find the most important Airport.", h: "CALL algo.pageRank('Airport', 'ROUTE')", rx: /CALL\s+algo\.pageRank/i, t: "The algorithm that powered Google works natively on your graph data." },
+            { title: "50. Graph Refactoring", q: "Final challenge: Match a Node, Create a new Relationship to a new Node, and Delete the old property. (Simulate with DETACH DELETE).", h: "MATCH (n) DETACH DELETE n", rx: /DETACH\s+DELETE/i, t: "Graph evolution requires carefully moving data from properties into new Nodes/Edges." }
+        ];
+
+        // ==========================================
+        // 3. GAME LOOP LOGIC
+        // ==========================================
+        let currentTask = 0;
+        let score = 0;
+        let fails = 0;
+
+        const taskContainer = document.getElementById('task-container');
+        const cypherInput = document.getElementById('cypher-input');
+        const consoleOut = document.getElementById('output-console');
+
+        function renderTasks() {
+            taskContainer.innerHTML = '';
+            taskData.forEach((t, i) => {
+                let div = document.createElement('div');
+                div.className = `task-box ${i === currentTask ? 'active' : ''} ${i < currentTask ? 'completed' : ''}`;
+                div.innerHTML = `
+                    <h2>${t.title}</h2>
+                    <p>${t.q}</p>
+                    <div class="threshold"><strong>Concept:</strong> ${t.t}</div>
+                `;
+                taskContainer.appendChild(div);
+            });
+            // Auto scroll to active
+            const activeEl = document.querySelector('.task-box.active');
+            if(activeEl) activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function updateStats() {
+            document.getElementById('score').innerText = score;
+            document.getElementById('fails').innerText = fails;
+        }
+
+        function runQuery() {
+            let query = cypherInput.value.trim();
+            if(!query) return;
+
+            // Visual Simulation
+            let simResult = simulateCypher(query);
+            consoleOut.innerText = `Executing...\n\nResult: ${simResult}`;
+
+            // Gamification Check
+            if (currentTask >= taskData.length) return;
+
+            let task = taskData[currentTask];
+            
+            if (task.rx.test(query)) {
+                // Success
+                consoleOut.innerText += `\n\n✅ Task ${currentTask + 1} Passed!`;
+                score++;
+                currentTask++;
+                fails = 0;
+                cypherInput.value = "";
+                updateStats();
+                renderTasks();
+                
+                if(currentTask >= taskData.length) {
+                    consoleOut.innerText += "\n\n🎉 You completed all Graph Database tasks!";
+                }
+            } else {
+                // Fail
+                fails++;
+                consoleOut.innerText += `\n\n❌ Incorrect syntax for Task ${currentTask + 1}. Try again.`;
+                if (fails >= 3) {
+                    consoleOut.innerText += `\n\n💡 HINT UNLOCKED:\nType exactly: ${task.h}`;
+                }
+                updateStats();
+            }
+        }
+
+        function resetGame() {
+            currentTask = 0; score = 0; fails = 0;
+            cypherInput.value = "";
+            initGraph();
+            updateStats();
+            renderTasks();
+            consoleOut.innerText = "Game reset. Graph reloaded.";
+        }
+
+        cypherInput.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runQuery();
+        });
+
+        // Init
+        initGraph();
+        renderTasks();
+
+    </script>
+</body>
+</html>
