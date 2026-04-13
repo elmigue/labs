@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ULaw ML Architect: Web Tutor</title>
+    <!-- Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-color: #000000;       /* Pure Black */
+            --panel-bg: #121212;       /* Very Dark Grey */
+            --text-main: #FFFFFF;      /* Pure White */
+            --text-muted: #AAAAAA;     /* Light Grey */
+            --accent: #00FFFF;         /* Neon Cyan */
+            --success: #00FF00;        /* Neon Green */
+            --error: #FF0000;          /* Neon Red */
+            --warning: #FFFF00;        /* Neon Yellow */
+            --border: #555555;         /* High Contrast Grey */
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        .left-panel { width: 25%; border-right: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; }
+        .center-panel { width: 50%; display: flex; flex-direction: column; }
+        .right-panel { width: 25%; border-left: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; }
+
+        /* Headers */
+        .panel-header {
+            padding: 15px;
+            background: #000000; /* Changed from #181825 */
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: var(--accent);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+
+        .reset-btn {
+            background: #313244;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .reset-btn:hover { background: var(--error); color: #111; border-color: var(--error); }
+
+        /* Left Panel - Exercises */
+        .exercise-list { flex-grow: 1; overflow-y: auto; padding: 10px; }
+        .exercise-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            background: #222222; /* Changed from #313244 */
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: 0.2s;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .exercise-item.unlocked { opacity: 1; pointer-events: auto; }
+        .exercise-item:hover.unlocked { background: #333333; } /* Changed from #45475a */
+        .exercise-item.active { border-color: var(--accent); background: #333333; } /* Changed from #45475a */
+        .exercise-item.completed { border-left: 4px solid var(--success); }
+        
+        .ex-details { display: none; margin-top: 10px; font-size: 0.9rem; color: var(--text-muted); line-height: 1.4;}
+        .exercise-item.active .ex-details { display: block; }
+        
+        .hint-btn { background: none; border: 1px solid var(--warning); color: var(--warning); padding: 2px 8px; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 0.8rem;}
+        .hint-text { display: none; color: var(--warning); margin-top: 5px; font-style: italic; }
+
+        .food-for-thought { background: rgba(0, 255, 255, 0.15); /* Cyan tint */ padding: 8px; border-radius: 4px; margin-top: 8px; color: var(--accent); }
+        .challenge { background: rgba(255, 0, 0, 0.15); /* Red tint */ padding: 8px; border-radius: 4px; margin-top: 8px; color: var(--error); }
+
+        /* Center Panel - REPL & Results */
+        .repl-container { height: 60%; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
+        #code-editor {
+            flex-grow: 1;
+            background: #000000; /* Changed from #1e1e2e */
+            color: #00FF00;      /* Changed from #a6e3a1 to pure green */
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            padding: 15px;
+            border: none;
+            resize: none;
+            outline: none;
+            white-space: pre;
+            line-height: 1.5;
+        }
+        .btn-run {
+            background: var(--accent);
+            color: #1e1e2e;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .btn-run:hover { filter: brightness(1.2); }
+        .btn-run:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+        .results-container { height: 40%; display: flex; flex-direction: column; background: #000000; } /* Changed from #11111b */
+        #terminal-output {
+            flex-grow: 1;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: var(--text-main);
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .term-success { color: var(--success); }
+        .term-error { color: var(--error); }
+        .term-warning { color: var(--warning); }
+
+        /* Right Panel - State & Memory */
+        .state-container { padding: 15px; flex-grow: 1; overflow-y: auto; }
+        .memory-block {
+            background: #000000; /* Changed from #11111b */
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: var(--warning);
+            margin-bottom: 15px;
+            border-left: 3px solid var(--warning);
+            white-space: pre-wrap;
+            transition: background-color 0.3s;
+        }
+        .concept-feedback {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+
+        /* Gamification Header */
+        .xp-bar-container { background: #333333; /* Changed from #313244 */ height: 6px; border-radius: 3px; margin-top: 3px; overflow: hidden; width: 100px; }
+        .xp-bar { background: var(--success); height: 100%; width: 0%; transition: width 0.5s; }
+        
+        /* Loading Overlay */
+        #loader { position: absolute; top:0; left:0; width:100vw; height:100vh; background: var(--bg-color); z-index: 1000; display: flex; justify-content: center; align-items: center; color: var(--accent); font-size: 1.5rem; flex-direction: column;}
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px;}
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <div>Initializing Python ML Environment...</div>
+    </div>
+
+    <!-- LEFT PANEL: Exercises -->
+    <div class="left-panel">
+        <div class="panel-header">
+            <div>🤖🛠️🕹️ ML Labs@ULaw</div>
+            <div class="header-stats">
+                <div>Score: <span id="score-display" style="color:var(--success);">0</span>/50</div>
+                <button class="reset-btn" onclick="resetApp()">Reset</button>
+            </div>
+        </div>
+        <div class="exercise-list" id="exercise-list">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <!-- CENTER PANEL: REPL & Results -->
+    <div class="center-panel">
+        <div class="repl-container">
+            <div class="panel-header">
+                <div>Python 3 REPL</div>
+                <div style="display:flex; align-items:center; gap: 15px;">
+                    <div style="font-size: 0.8rem;">Lvl <span id="level-display">1</span> | <span id="xp-display">0</span> XP
+                        <div class="xp-bar-container"><div class="xp-bar" id="xp-fill"></div></div>
+                    </div>
+                    <button class="btn-run" id="btn-run" disabled>Run Code (Shift+Enter)</button>
+                </div>
+            </div>
+            <textarea id="code-editor" spellcheck="false" placeholder="Write your ML logic here..."></textarea>
+        </div>
+        <div class="results-container">
+            <div class="panel-header" style="background: #11111b; border-top: 1px solid var(--border);">Execution Output</div>
+            <div id="terminal-output">Waiting for Python to initialize...</div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: State/Memory Feedback -->
+    <div class="right-panel">
+        <div class="panel-header">Model Inspector</div>
+        <div class="state-container">
+            <div class="concept-feedback" id="concept-text">
+                When you execute code, the internal state of your ML models, variables, and parameters will be inspected here.
+            </div>
+            <br>
+            <div class="memory-block" id="memory-block">
+// Model state uninitialized
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA: 50 Scaffolded Exercises mapped to ULaw PDF ---
+        const exercises = [
+            // PART 1: Overview & Paradigms (Slides 1-10)
+            { id: 1, title: "1. The Rule-Based Limit", task: "We cannot program a face detector with 'if' statements. Write `is_face(round, two_eyes)` returning True if both are True.", hint: "return round and two_eyes", thought: "This symbolic approach results in millions of fragile rules.", challenge: "How would you write rules to handle a face in profile? (It's nearly impossible).", code: "def is_face(round, two_eyes):\n    pass", test: "assert is_face(True, True) == True\nprint('STATE: {\"Paradigm\": \"Symbolic (Rule-Based)\", \"Fragility\": \"High\"}')\nprint('Mission Complete!')" },
+            { id: 2, title: "2. The ML Solution", task: "We get around this limitation by generalising from examples. Return the string 'generalise' to define the core mechanic of ML.", hint: "return 'generalise'", thought: "Instead of writing rules, we feed the algorithm data and let it figure out the features.", challenge: "", code: "def core_mechanic():\n    pass", test: "assert core_mechanic() == 'generalise'\nprint('STATE: {\"Approach\": \"Machine Learning\", \"Method\": \"Generalisation\"}')\nprint('Mission Complete!')" },
+            { id: 3, title: "3. ML Definition (Samuel 1959)", task: "Machine learning eliminates the need for detailed programming. Return the formula 'y = f(x) + e' representing signal plus noise.", hint: "return 'y = f(x) + e'", thought: "We use 'f' to predict 'Y' for new 'X'.", challenge: "", code: "def ml_formula():\n    pass", test: "assert ml_formula() == 'y = f(x) + e'\nprint('STATE: {\"Goal\": \"Function Approximation\", \"Noise\": \"e\"}')\nprint('Mission Complete!')" },
+            { id: 4, title: "4. Supervised Learning", task: "In supervised learning, the 'teacher' gives answers. Return the list `['input', 'label']` representing supervised data.", hint: "return ['input', 'label']", thought: "Task: Predict the label of some yet unseen input.", challenge: "", code: "def supervised_data():\n    pass", test: "assert 'label' in supervised_data()\nprint('STATE: {\"Learning_Mode\": \"Supervised\", \"Has_Teacher\": True}')\nprint('Mission Complete!')" },
+            { id: 5, title: "5. Unsupervised Learning", task: "No teacher. Data is just `[input]`. Return 'discover' as the primary task of unsupervised learning.", hint: "return 'discover'", thought: "Task: Discover how patterns emerge, aggregate, or cluster.", challenge: "", code: "def unsupervised_task():\n    pass", test: "assert unsupervised_task() == 'discover'\nprint('STATE: {\"Learning_Mode\": \"Unsupervised\", \"Labels\": None}')\nprint('Mission Complete!')" },
+            { id: 6, title: "6. Reinforcement Learning", task: "Teacher gives 'grades' later. Return `['State', 'Action', 'Reward']`.", hint: "Return the exact list.", thought: "Task: Find optimal strategy based on payoffs.", challenge: "", code: "def rl_data():\n    pass", test: "assert 'Reward' in rl_data()\nprint('STATE: {\"Learning_Mode\": \"Reinforcement\", \"Goal\": \"Optimal Strategy\"}')\nprint('Mission Complete!')" },
+            { id: 7, title: "7. Prediction vs Decision", task: "Humans learn to anticipate actions based on data. If we predict rain, the decision is 'take umbrella'. Write `decision(prediction)` returning 'umbrella' if prediction is 'rain'.", hint: "if prediction == 'rain': return 'umbrella'", thought: "More experience => more data => better decisions.", challenge: "", code: "def decision(prediction):\n    pass", test: "assert decision('rain') == 'umbrella'\nprint('STATE: {\"Data\": \"Rain\", \"Action\": \"Umbrella\"}')\nprint('Mission Complete!')" },
+            
+            // PART 2: The ML Workflow & Datasets (Slides 11-15, 23-24)
+            { id: 8, title: "8. Data is Fuel", task: "Datasets are the textbook and exams for algorithms. They have rows (examples) and columns (___). Return 'features'.", hint: "return 'features'", thought: "Columns represent characteristics or measurements (age, price, words).", challenge: "", code: "def get_column_name():\n    pass", test: "assert get_column_name() == 'features'\nprint('STATE: {\"Data_Structure\": \"Rows (Examples) x Columns (Features)\"}')\nprint('Mission Complete!')" },
+            { id: 9, title: "9. The ML Workflow (Steps 1-3)", task: "Return the first 3 steps of the universal workflow: `['Collection', 'Preprocessing', 'Split']`.", hint: "Return the exact list.", thought: "Before training, we must gather, clean, and divide our data.", challenge: "", code: "def workflow_first_half():\n    pass", test: "assert workflow_first_half()[2] == 'Split'\nprint('STATE: {\"Workflow_Stage\": \"Data Preparation\"}')\nprint('Mission Complete!')" },
+            { id: 10, title: "10. The ML Workflow (Steps 4-6)", task: "Return the last 3 steps: `['Training', 'Evaluation', 'Inference']`.", hint: "Return the exact list.", thought: "Inference is using the model in the real world.", challenge: "", code: "def workflow_second_half():\n    pass", test: "assert workflow_second_half()[0] == 'Training'\nprint('STATE: {\"Workflow_Stage\": \"Model Deployment\"}')\nprint('Mission Complete!')" },
+            { id: 11, title: "11. Train / Test Split", task: "Given `data = [1,2,3,4,5]`, return the first 4 as `train` and last 1 as `test` in a tuple.", hint: "return (data[:4], data[4:])", thought: "Test Data is kept separate until the very end. Used to get an unbiased measure.", challenge: "", code: "def data_split(data):\n    pass", test: "tr, te = data_split([1,2,3,4,5])\nassert len(tr) == 4 and len(te) == 1\nprint('STATE: {\"Train_Set\": 4, \"Test_Set\": 1}')\nprint('Mission Complete!')" },
+            { id: 12, title: "12. Validation Data", task: "Used during training to tune model settings and check learning. What are these settings called? Return 'hyperparameters'.", hint: "return 'hyperparameters'", thought: "Prevents the model from just memorising the training data.", challenge: "", code: "def tuning_settings():\n    pass", test: "assert tuning_settings() == 'hyperparameters'\nprint('STATE: {\"Validation_Set\": \"Active\", \"Tuning\": \"Hyperparameters\"}')\nprint('Mission Complete!')" },
+
+            // PART 3: Supervised Flavours & Linear Regression (Slides 14, 16-19, 28-31)
+            { id: 13, title: "13. Regression vs Classification", task: "Regression outputs a continuous number. Classification outputs a discrete ___. Return 'category'.", hint: "return 'category'", thought: "Regression: House price. Classification: Spam/Ham.", challenge: "", code: "def classification_output():\n    pass", test: "assert classification_output() == 'category'\nprint('STATE: {\"Regression\": \"Continuous\", \"Classification\": \"Discrete\"}')\nprint('Mission Complete!')" },
+            { id: 14, title: "14. Linear Hypothesis", task: "The relationship between X and Y is a straight line. Write `predict(x, m, c)` returning `m*x + c`.", hint: "return m * x + c", thought: "Goal: find the 'best' m (slope) and c (intercept).", challenge: "Rewrite using w1 and w0 notation.", code: "def predict(x, m, c):\n    pass", test: "assert predict(10, 2, 5) == 25\nprint('STATE: {\"Model\": \"Linear Regression\", \"y_hat\": 25}')\nprint('Mission Complete!')" },
+            { id: 15, title: "15. The Cost Function (MSE)", task: "How do we measure error? Mean Squared Error. Write `mse_single(y_actual, y_pred)` returning `(y_actual - y_pred)**2`.", hint: "return (y_actual - y_pred)**2", thought: "We square the error to punish big mistakes more than small ones.", challenge: "", code: "def mse_single(y_actual, y_pred):\n    pass", test: "assert mse_single(10, 7) == 9\nprint('STATE: {\"Loss_Function\": \"MSE\", \"Error\": 9}')\nprint('Mission Complete!')" },
+            { id: 16, title: "16. Gradient Descent 1", task: "An algorithm to train models. Step 1: Start with random weights. Step 2: Calculate 'direction' (slope of error). What is this called? Return 'gradient'.", hint: "return 'gradient'", thought: "Calculus tells us which way is 'down' the error curve.", challenge: "", code: "def slope_name():\n    pass", test: "assert slope_name() == 'gradient'\nprint('STATE: {\"Optimizer\": \"Gradient Descent\"}')\nprint('Mission Complete!')" },
+            { id: 17, title: "17. Gradient Descent 2", task: "Step 3: Step opposite to gradient. If `grad` is positive, we subtract. Write `update(w, grad, lr)` returning `w - (lr * grad)`.", hint: "return w - (lr * grad)", thought: "Step 4: Repeat until bottom of valley. This is how machines 'learn'.", challenge: "", code: "def update(w, grad, lr):\n    pass", test: "assert update(5.0, 2.0, 0.1) == 4.8\nprint('STATE: {\"Weight_Update\": \"w_new = 4.8\"}')\nprint('Mission Complete!')" },
+
+            // PART 4: Logistic Regression & Multiclass (Slides 20-23, 32-35)
+            { id: 18, title: "18. Logistic Regression", task: "Do not let the name fool you - it is a classification problem! We want to output a probability. What is the range? Return the tuple `(0, 1)`.", hint: "return (0, 1)", thought: "Linear regression outputs -infinity to +infinity.", challenge: "", code: "def prob_range():\n    pass", test: "assert prob_range() == (0, 1)\nprint('STATE: {\"Model\": \"Logistic Regression\", \"Output_Type\": \"Probability\"}')\nprint('Mission Complete!')" },
+            { id: 19, title: "19. The Sigmoid Function", task: "We squash the line using the sigmoid function: 1 / (1 + e^-z). Implement `sigmoid(z)` using `math.exp()`.", hint: "return 1 / (1 + math.exp(-z))", thought: "This turns any number into a probability.", challenge: "", code: "import math\ndef sigmoid(z):\n    pass", test: "assert round(sigmoid(0), 1) == 0.5\nprint('STATE: {\"Activation\": \"Sigmoid\", \"sigma(0)\": 0.5}')\nprint('Mission Complete!')" },
+            { id: 20, title: "20. Decision Boundary", task: "If output > 0.5, predict class 1. If < 0.5 predict class 0. Write `classify(prob)` implementing this.", hint: "return 1 if prob > 0.5 else 0", thought: "This forms a 'decision boundary' separating the classes.", challenge: "", code: "def classify(prob):\n    pass", test: "assert classify(0.7) == 1\nassert classify(0.3) == 0\nprint('STATE: {\"Boundary\": 0.5, \"Class_Assigned\": True}')\nprint('Mission Complete!')" },
+            { id: 21, title: "21. Multiple Classification", task: "What if we have cat, dog, bird? 'One-vs-rest' trains multiple binary classifiers. For 3 classes, how many classifiers? Return 3.", hint: "return 3", thought: "Is it a cat? (yes/no). Is it a dog? (yes/no).", challenge: "", code: "def ovr_count():\n    pass", test: "assert ovr_count() == 3\nprint('STATE: {\"Strategy\": \"One-vs-Rest\"}')\nprint('Mission Complete!')" },
+            { id: 22, title: "22. Softmax", task: "Softmax is a mathematical function that creates a probability distribution across all classes that sums to 100%. Given `[0.2, 0.5, 0.3]`, return their sum.", hint: "return sum(probs)", thought: "Softmax is the standard output layer for neural networks.", challenge: "", code: "def check_softmax(probs):\n    pass", test: "assert check_softmax([0.2, 0.5, 0.3]) == 1.0\nprint('STATE: {\"Layer\": \"Softmax\", \"Valid_Distribution\": True}')\nprint('Mission Complete!')" },
+
+            // PART 5: Non-Linearity, Trees & Forests (Slides 24-27, 36-39)
+            { id: 23, title: "23. Non-Linear Problems", task: "What if data isn't a straight line? We can add polynomial features (like x^2). Write `transform(x)` returning `[x, x**2]`.", hint: "return [x, x**2]", thought: "Feature engineering allows linear models to solve nonlinear problems.", challenge: "", code: "def transform(x):\n    pass", test: "assert transform(3) == [3, 9]\nprint('STATE: {\"Feature_Engineering\": \"Polynomial Expansion\"}')\nprint('Mission Complete!')" },
+            { id: 24, title: "24. Kernel Methods", task: "Which algorithm projects data into higher dimensions where it can be 'separated linearly'? Return 'SVM'.", hint: "return 'SVM'", thought: "Support Vector Machines use kernels (like RBF) to do this math efficiently.", challenge: "", code: "def higher_dim_algo():\n    pass", test: "assert higher_dim_algo() == 'SVM'\nprint('STATE: {\"Algorithm\": \"SVM\", \"Trick\": \"Kernel Projection\"}')\nprint('Mission Complete!')" },
+            { id: 25, title: "25. Decision Trees", task: "A game of '20 questions'. Split data using rectangular regions. Write `root_node(age)` returning 'Right' if age > 30 else 'Left'.", hint: "if age > 30: return 'Right'", thought: "Pros: Highly interpretable (transparent/'white box').", challenge: "", code: "def root_node(age):\n    pass", test: "assert root_node(35) == 'Right'\nprint('STATE: {\"Model\": \"Decision Tree\", \"Split_Condition\": \"Age > 30\"}')\nprint('Mission Complete!')" },
+            { id: 26, title: "26. Tree Cons", task: "Because trees can keep splitting until every point has its own box, they are prone to memorizing noise. Return 'overfitting'.", hint: "return 'overfitting'", thought: "This is the primary weakness of single decision trees.", challenge: "", code: "def tree_con():\n    pass", test: "assert tree_con() == 'overfitting'\nprint('STATE: {\"Risk_Profile\": \"High Variance\"}')\nprint('Mission Complete!')" },
+            { id: 27, title: "27. Random Forests", task: "The quintessential 'ensemble' algorithm. Train 100 trees on random subsets. How do they make a final prediction? Return 'Vote'.", hint: "return 'Vote'", thought: "Take the average prediction. 'Wisdom of crowds' reduces errors and overfitting.", challenge: "", code: "def forest_method():\n    pass", test: "assert forest_method() == 'Vote'\nprint('STATE: {\"Algorithm\": \"Random Forest\", \"Aggregation\": \"Voting\"}')\nprint('Mission Complete!')" },
+
+            // PART 6: Bias-Variance & Overfitting (Slides 28-32, 40-44)
+            { id: 28, title: "28. The Tradeoff", task: "Total Error = Bias + Variance + Noise. Write `total_error(b, v, n)` returning their sum.", hint: "return b + v + n", thought: "We try to find the sweet spot that minimises total error.", challenge: "", code: "def total_error(b, v, n):\n    pass", test: "assert total_error(1, 2, 0.5) == 3.5\nprint('STATE: {\"Error_Decomposition\": \"B+V+N\"}')\nprint('Mission Complete!')" },
+            { id: 29, title: "29. Bias (Underfitting)", task: "Error due to erroneous assumptions. Model is too simple (e.g. straight line on curved data). Analogy: didn't study. Return 'Bias'.", hint: "return 'Bias'", thought: "It cannot learn the pattern.", challenge: "", code: "def too_simple():\n    pass", test: "assert too_simple() == 'Bias'\nprint('STATE: {\"Status\": \"Underfitting (High Bias)\"}')\nprint('Mission Complete!')" },
+            { id: 30, title: "30. Variance (Overfitting)", task: "Error due to sensitivity to noise. Model is too complex and memorizes data points. Return 'Variance'.", hint: "return 'Variance'", thought: "Analogy: Memorised the material but fails questions phrased differently.", challenge: "", code: "def too_complex():\n    pass", test: "assert too_complex() == 'Variance'\nprint('STATE: {\"Status\": \"Overfitting (High Variance)\"}')\nprint('Mission Complete!')" },
+            { id: 31, title: "31. Detecting Overfitting", task: "Compare training error vs test error. If Train is Low and Test is High, what is it? Return 'Overfitting'.", hint: "return 'Overfitting'", thought: "This is the primary debugging tool for ML engineers.", challenge: "", code: "def diagnostic(train_err, test_err):\n    pass", test: "assert diagnostic('Low', 'High') == 'Overfitting'\nprint('STATE: {\"Diagnostic\": \"Overfitting Detected\"}')\nprint('Mission Complete!')" },
+            { id: 32, title: "32. Fixing Overfitting: Data", task: "What is the best cure for an overfitted model? Return 'More data'.", hint: "return 'More data'", thought: "Other cures: Simplify the model (reduce polynomial degree, limit tree depth).", challenge: "", code: "def best_cure():\n    pass", test: "assert best_cure() == 'More data'\nprint('STATE: {\"Mitigation\": \"Increase Dataset Size\"}')\nprint('Mission Complete!')" },
+            { id: 33, title: "33. Fixing Overfitting: Regularisation", task: "Mathematically punish complex models using 'norms' (L1/L2 penalties). This is the fancy maths way of translating the concept of: return 'keep it simple'.", hint: "return 'keep it simple'", thought: "Forces weights to be smaller, preventing extreme sensitivity to noise.", challenge: "", code: "def reg_concept():\n    pass", test: "assert reg_concept() == 'keep it simple'\nprint('STATE: {\"Mitigation\": \"L1/L2 Regularization Applied\"}')\nprint('Mission Complete!')" },
+            { id: 34, title: "34. N-Fold Cross Validation", task: "Split data into N parts. Train on N-1, Test on 1. Rotate. Write `test_folds(n)` returning 1.", hint: "return 1", thought: "Average the scores. Gives a much more robust estimate of performance.", challenge: "", code: "def test_folds(n):\n    pass", test: "assert test_folds(5) == 1\nprint('STATE: {\"Validation_Strategy\": \"N-Fold CV\"}')\nprint('Mission Complete!')" },
+
+            // PART 7: Unsupervised Learning (Slides 33-35, 45-47)
+            { id: 35, title: "35. K-Means Clustering", task: "Our goal is to group similar data points. Pick K random ___. Assign points, move to spatial average. Return 'centroids'.", hint: "return 'centroids'", thought: "Use case: 'who are my high-value shoppers' (customer segmentation).", challenge: "", code: "def kmeans_anchors():\n    pass", test: "assert kmeans_anchors() == 'centroids'\nprint('STATE: {\"Algorithm\": \"K-Means\", \"Target\": \"Centroids\"}')\nprint('Mission Complete!')" },
+            { id: 36, title: "36. K-Nearest Neighbours", task: "Operationalises 'tell me who your friends are'. To predict a new point, look at K closest points and take majority vote. Return 'lazy' as it doesn't train.", hint: "return 'lazy'", thought: "In contrast to model-based, KNN is 'instance-based'. It just memorises data, looks it up and compares.", challenge: "", code: "def knn_type():\n    pass", test: "assert knn_type() == 'lazy'\nprint('STATE: {\"Algorithm\": \"KNN\", \"Type\": \"Instance-Based (Lazy)\"}')\nprint('Mission Complete!')" },
+
+            // PART 8: Evaluation & Metrics (Slides 36-39, 48-51)
+            { id: 37, title: "37. Accuracy Paradox", task: "Detecting rare disease (1%). Bad model predicts 'Healthy' for everyone. Accuracy = Correct / Total. Calculate `accuracy(99, 100)`.", hint: "return correct / total", thought: "A good rule of thumb is to never trust accuracy alone on imbalanced datasets.", challenge: "", code: "def accuracy(correct, total):\n    pass", test: "assert accuracy(99, 100) == 0.99\nprint('STATE: {\"Metric\": \"Accuracy\", \"Warning\": \"Paradox possible\"}')\nprint('Mission Complete!')" },
+            { id: 38, title: "38. Precision", task: "'When I say it is (outcome), how often am I right?' Minimise false positives. Write `precision(tp, fp)` returning `tp / (tp + fp)`.", hint: "return tp / (tp + fp)", thought: "Crucial for Spam filters. You don't want to label a real email (negative) as spam (positive).", challenge: "", code: "def precision(tp, fp):\n    pass", test: "assert precision(8, 2) == 0.8\nprint('STATE: {\"Metric\": \"Precision\", \"Value\": 0.8}')\nprint('Mission Complete!')" },
+            { id: 39, title: "39. Recall", task: "'Of all outcome cases, how many did I find?' Minimise false negatives. Write `recall(tp, fn)` returning `tp / (tp + fn)`.", hint: "return tp / (tp + fn)", thought: "Crucial for Cancer detection. You don't want to miss an actual cancer (positive) case.", challenge: "", code: "def recall(tp, fn):\n    pass", test: "assert recall(9, 1) == 0.9\nprint('STATE: {\"Metric\": \"Recall\", \"Value\": 0.9}')\nprint('Mission Complete!')" },
+            { id: 40, title: "40. F1 Score", task: "We usually trade off precision for recall. The (harmonic) mean of both is the F1 score. Return 'F1'.", hint: "return 'F1'", thought: "Evaluate: Don't trust accuracy - use F1.", challenge: "", code: "def balanced_metric():\n    pass", test: "assert balanced_metric() == 'F1'\nprint('STATE: {\"Metric\": \"F1 Score (Harmonic Mean)\"}')\nprint('Mission Complete!')" },
+            { id: 41, title: "41. Confusion Matrix", task: "A False Negative (FN) is a Type II error (a miss). A False Positive (FP) is a Type I error (a false alarm). Return 'Type I' for FP.", hint: "return 'Type I'", thought: "A table layout that visualises performance.", challenge: "", code: "def fp_error_type():\n    pass", test: "assert fp_error_type() == 'Type I'\nprint('STATE: {\"Error\": \"False Positive (Type I)\"}')\nprint('Mission Complete!')" },
+
+            // PART 9: Data Prep, Pitfalls & Summary (Slides 40-42, 51-58)
+            { id: 42, title: "42. Data Preparation", task: "80% of ML work is data cleaning. If we have Missing Values, we Drop row or fill with mean. What is this filling called? Return 'impute'.", hint: "return 'impute'", thought: "Garbage In, Garbage Out.", challenge: "", code: "def missing_val_strategy():\n    pass", test: "assert missing_val_strategy() == 'impute'\nprint('STATE: {\"Data_Clean\": \"Imputation Applied\"}')\nprint('Mission Complete!')" },
+            { id: 43, title: "43. One-Hot Encoding", task: "Categorical data must be converted to numerical. Return 'one-hot' as the encoding method.", hint: "return 'one-hot'", thought: "Prevents ordinality assumptions (e.g. Red=1, Blue=2 does not mean Blue > Red).", challenge: "", code: "def cat_encoding():\n    pass", test: "assert cat_encoding() == 'one-hot'\nprint('STATE: {\"Data_Clean\": \"One-Hot Encoded\"}')\nprint('Mission Complete!')" },
+            { id: 44, title: "44. Scaling", task: "Standardisation/normalisation to mean 0, std deviation 1. Write `scale(x, mean, std)` returning `(x - mean)/std`.", hint: "return (x - mean)/std", thought: "To enable use and comparisons across features of different magnitudes.", challenge: "", code: "def scale(x, mean, std):\n    pass", test: "assert scale(10, 5, 2) == 2.5\nprint('STATE: {\"Data_Clean\": \"Scaled (Standardised)\"}')\nprint('Mission Complete!')" },
+            { id: 45, title: "45. Feature Engineering", task: "A fancy name for massaging the data so it's easier to train. If data has 'length' and 'width', model struggles. Return their product.", hint: "return length * width", thought: "Deep Learning (next unit) automates this.", challenge: "", code: "def engineer(length, width):\n    pass", test: "assert engineer(4, 5) == 20\nprint('STATE: {\"Feature_Added\": \"Area\"}')\nprint('Mission Complete!')" },
+            { id: 46, title: "46. Data Leakage", task: "Including the answer in the input (e.g. using 'time of death' to predict 'survival'). Return True if this is bad.", hint: "return True", thought: "Getting good predictions is both a science and an art.", challenge: "", code: "def is_leakage_bad():\n    pass", test: "assert is_leakage_bad() == True\nprint('STATE: {\"Pitfall_Check\": \"Data Leakage Avoided\"}')\nprint('Mission Complete!')" },
+            { id: 47, title: "47. Survivorship Bias", task: "Training only on successful examples. Return 'bias'.", hint: "return 'bias'", thought: "You must include the failures to learn the boundary.", challenge: "", code: "def success_only():\n    pass", test: "assert success_only() == 'bias'\nprint('STATE: {\"Pitfall_Check\": \"Survivorship Bias Acknowledged\"}')\nprint('Mission Complete!')" },
+            { id: 48, title: "48. Correlation vs Causation", task: "Ice cream sales correlate with shark attacks. Does ML find causation? Return False.", hint: "return False", thought: "ML finds statistical correlation (things go in some directions). Predicting shark attacks based on ice cream is mathematically sound but logically wrong.", challenge: "", code: "def finds_causation():\n    pass", test: "assert finds_causation() == False\nprint('STATE: {\"Logic_Check\": \"Correlation != Causation\"}')\nprint('Mission Complete!')" },
+            { id: 49, title: "49. Case Study: Netflix", task: "Recommender system via matrix factorisation. Features: your watch history and OTHER users' history. Return 'collaborative'.", hint: "return 'collaborative'", thought: "Goal: predict rating you would give to a movie you have not yet seen.", challenge: "", code: "def netflix_system():\n    pass", test: "assert netflix_system() == 'collaborative'\nprint('STATE: {\"Case_Study\": \"Netflix Recommender\"}')\nprint('Mission Complete!')" },
+            { id: 50, title: "50. ML Recipe Summary", task: "1. Frame problem. 2. Clean data. 3. Choose model. 4. Evaluate. 5. Iterate. ML is an experimental science - we have to explore and try things. Return 'explore'.", hint: "return 'explore'", thought: "You have completed the Machine Learning Workshop!", challenge: "Prepare for Deep Learning.", code: "def ml_philosophy():\n    pass", test: "assert ml_philosophy() == 'explore'\nprint('STATE: {\"Module\": \"MASTERED\", \"Status\": \"Ready for Deep Learning\"}')\nprint('Mission 50 Complete! You are an ML Architect.')" }
+        ];
+
+        let currentExId = 1;
+        let xp = 0;
+        let completedCount = 0;
+        let failCount = 0;
+        let pyodideReady = false;
+        let pyodideInstance = null;
+        let unlockedExs = new Set([1]);
+        let completedExs = new Set();
+
+        // UI Elements
+        const exList = document.getElementById('exercise-list');
+        const codeEditor = document.getElementById('code-editor');
+        const btnRun = document.getElementById('btn-run');
+        const termOut = document.getElementById('terminal-output');
+        const loader = document.getElementById('loader');
+        const xpDisplay = document.getElementById('xp-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+        const xpFill = document.getElementById('xp-fill');
+        const memoryBlock = document.getElementById('memory-block');
+        const conceptText = document.getElementById('concept-text');
+
+        // Initialize App
+        async function init() {
+            renderExercises();
+            loadExercise(1);
+
+            try {
+                pyodideInstance = await loadPyodide();
+                // Setup Python stdout capture
+                await pyodideInstance.runPythonAsync(`
+import sys
+import io
+class CaptureStdout(list):
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self._stringio = io.StringIO()
+        return self
+    def __exit__(self, *args):
+        self.extend(self._stringio.getvalue().splitlines())
+        del self._stringio
+        sys.stdout = self._stdout
+                `);
+                pyodideReady = true;
+                btnRun.disabled = false;
+                btnRun.innerText = "Run Code (Shift+Enter)";
+                loader.style.display = "none";
+                termOut.innerText = "Python Environment Ready.\nSelect an exercise and write your code.";
+            } catch (err) {
+                termOut.innerText = "Error loading Python environment: " + err;
+                termOut.className = "term-error";
+            }
+        }
+
+        function renderExercises() {
+            exList.innerHTML = '';
+            exercises.forEach(ex => {
+                const div = document.createElement('div');
+                
+                let classes = ['exercise-item'];
+                if (unlockedExs.has(ex.id)) classes.push('unlocked');
+                if (completedExs.has(ex.id)) classes.push('completed');
+                if (ex.id === currentExId) classes.push('active');
+                
+                div.className = classes.join(' ');
+                div.id = `ex-${ex.id}`;
+                
+                div.onclick = () => { 
+                    if(unlockedExs.has(ex.id) || completedExs.has(ex.id)) {
+                        loadExercise(ex.id); 
+                    }
+                };
+                
+                let inner = `<strong>${ex.title}</strong>`;
+                inner += `<div class="ex-details">
+                    <p style="margin-bottom: 8px;">${ex.task}</p>
+                    <button class="hint-btn" onclick="toggleHint(event, ${ex.id})">Show Hint</button>
+                    <p class="hint-text" id="hint-${ex.id}">Hint: ${ex.hint}</p>
+                    <div class="food-for-thought">💭 <b>Food for Thought:</b> ${ex.thought}</div>
+                    ${ex.challenge ? `<div class="challenge">🔥 <b>Challenge:</b> ${ex.challenge}</div>` : ''}
+                </div>`;
+                div.innerHTML = inner;
+                exList.appendChild(div);
+            });
+        }
+
+        function toggleHint(e, id) {
+            e.stopPropagation();
+            const hint = document.getElementById(`hint-${id}`);
+            hint.style.display = hint.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function loadExercise(id) {
+            currentExId = id;
+            failCount = 0; // Reset fail counter for new exercise
+            renderExercises(); // Re-render to update active class visually
+            
+            const ex = exercises.find(e => e.id === id);
+            codeEditor.value = ex.code;
+            termOut.innerText = `Loaded ${ex.title}... waiting for execution.`;
+            termOut.className = '';
+            
+            // Update Right Panel Context
+            conceptText.innerHTML = `<strong>Current Concept:</strong><br>${ex.title}<br><br>As you write code, watch this panel to see how your logic affects the internal state, metrics, and parameters of the ML model.`;
+            memoryBlock.innerText = "// Awaiting function execution...";
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            btnRun.disabled = true;
+            termOut.innerText = "Running...";
+            termOut.className = "";
+
+            const ex = exercises.find(e => e.id === currentExId);
+            const userCode = codeEditor.value;
+            const testCode = ex.test;
+
+            // Wrap user code and test code in capture block
+            const pythonScript = `
+with CaptureStdout() as output:
+    try:
+${userCode.split('\n').map(line => '        ' + line).join('\n')}
+${testCode.split('\n').map(line => '        ' + line).join('\n')}
+    except AssertionError:
+        print("TEST_FAILED: Output did not match expected result. Check your logic.")
+    except Exception as e:
+        print(f"ERROR: {e}")
+output
+`;
+
+            try {
+                let result = await pyodideInstance.runPythonAsync(pythonScript);
+                let outList = result.toJs();
+                
+                let displayOut = "";
+                let passed = false;
+                let stateData = null;
+
+                outList.forEach(line => {
+                    if (line.includes("TEST_FAILED") || line.includes("ERROR")) {
+                        displayOut += "❌ " + line + "\n";
+                    } else if (line.startsWith("STATE:")) {
+                        stateData = line.replace("STATE:", "").trim();
+                    } else {
+                        displayOut += line + "\n";
+                        if (line.includes("Complete")) passed = true;
+                    }
+                });
+
+                if (passed) {
+                    termOut.innerText = "✅ Tests Passed!\n" + displayOut;
+                    termOut.className = "term-success";
+                    handleSuccess(stateData);
+                } else {
+                    failCount++;
+                    let skipMessage = "";
+                    
+                    // Skip Logic: Unlock next exercise after 3 fails
+                    if (failCount >= 3 && currentExId < 50) {
+                        let nextId = currentExId + 1;
+                        if (!unlockedExs.has(nextId)) {
+                            unlockedExs.add(nextId);
+                            skipMessage = "\n\n💡 (╭ರ_•́) It looks like you're stuck. The next exercise has been unlocked so you can skip this and come back later!";
+                            renderExercises(); // update UI to show unlock
+                        }
+                    }
+                    
+                    termOut.innerText = "Execution Output:\n" + displayOut + skipMessage;
+                    termOut.className = "term-error";
+                    if (skipMessage) termOut.classList.add("term-warning"); // slight color change for the warning
+                }
+
+            } catch (err) {
+                termOut.innerText = "Syntax Error:\n" + err;
+                termOut.className = "term-error";
+            }
+            btnRun.disabled = false;
+        }
+
+        function handleSuccess(stateData) {
+            // Update Right Panel (State visualizer)
+            if (stateData) {
+                try {
+                    let formattedObj = JSON.stringify(JSON.parse(stateData), null, 2);
+                    memoryBlock.innerText = `MODEL_STATE = ${formattedObj}`;
+                    
+                    // Highlight effect
+                    memoryBlock.style.backgroundColor = "rgba(0, 255, 0, 0.3)";
+                    setTimeout(() => memoryBlock.style.backgroundColor = "#000000", 500);
+                } catch(e) {
+                    memoryBlock.innerText = stateData;
+                }
+            }
+
+            if (!completedExs.has(currentExId)) {
+                completedExs.add(currentExId);
+                
+                // Increment Score and XP
+                completedCount++;
+                scoreDisplay.innerText = completedCount;
+                xp += 100;
+                updateGamification();
+                
+                // Unlock next
+                if (currentExId < 50) {
+                    let nextId = currentExId + 1;
+                    unlockedExs.add(nextId);
+                    renderExercises(); // re-render to show completed/unlocked
+                    
+                    // Auto-scroll logic to next
+                    const nextDiv = document.getElementById(`ex-${nextId}`);
+                    if(nextDiv) nextDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    renderExercises(); // just re-render to show completed
+                }
+            }
+        }
+
+        function updateGamification() {
+            xpDisplay.innerText = xp;
+            let level = Math.floor(xp / 500) + 1;
+            levelDisplay.innerText = level;
+            
+            let percentage = ((xp % 500) / 500) * 100;
+            xpFill.style.width = `${percentage}%`;
+        }
+
+        function resetApp() {
+            if(confirm("Are you sure you want to reset all progress?")) {
+                location.reload();
+            }
+        }
+
+        // Event Listeners
+        btnRun.addEventListener('click', runCode);
+        
+        // Simple IDE functionality: Tab key spaces, Shift+Enter to run
+        codeEditor.addEventListener('keydown', function(e) {
+            if (e.key == 'Tab') {
+                e.preventDefault();
+                let start = this.selectionStart;
+                let end = this.selectionEnd;
+                this.value = this.value.substring(0, start) + "    " + this.value.substring(end);
+                this.selectionStart = this.selectionEnd = start + 4;
+            }
+            if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                btnRun.click();
+            }
+        });
+
+        // Start App
+        init();
+
+    </script>
+</body>
+</html>
