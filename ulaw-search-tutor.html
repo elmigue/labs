@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Search Architect - Web Tutor</title>
+    <!-- Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-color: #1e1e2e;
+            --panel-bg: #2a2b3c;
+            --text-main: #cdd6f4;
+            --text-muted: #a6adc8;
+            --accent: #f5c2e7; /* Pink/Purple accent for Search */
+            --success: #a6e3a1;
+            --error: #f38ba8;
+            --warning: #f9e2af;
+            --border: #45475a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        .left-panel { width: 25%; border-right: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; }
+        .center-panel { width: 50%; display: flex; flex-direction: column; }
+        .right-panel { width: 25%; border-left: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; }
+
+        /* Headers */
+        .panel-header {
+            padding: 15px;
+            background: #181825;
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: var(--accent);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Left Panel - Exercises */
+        .exercise-list { flex-grow: 1; overflow-y: auto; padding: 10px; }
+        .exercise-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            background: #313244;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: 0.2s;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .exercise-item.unlocked { opacity: 1; pointer-events: auto; }
+        .exercise-item:hover.unlocked { background: #45475a; }
+        .exercise-item.active { border-color: var(--accent); background: #45475a; }
+        .exercise-item.completed { border-left: 4px solid var(--success); }
+        
+        .ex-details { display: none; margin-top: 10px; font-size: 0.9rem; color: var(--text-muted); line-height: 1.4;}
+        .exercise-item.active .ex-details { display: block; }
+        
+        .hint-btn { background: none; border: 1px solid var(--warning); color: var(--warning); padding: 2px 8px; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 0.8rem;}
+        .hint-text { display: none; color: var(--warning); margin-top: 5px; font-style: italic; }
+
+        .food-for-thought { background: rgba(245, 194, 231, 0.1); padding: 8px; border-radius: 4px; margin-top: 8px; color: var(--accent); }
+        .challenge { background: rgba(243, 139, 168, 0.1); padding: 8px; border-radius: 4px; margin-top: 8px; color: var(--error); }
+
+        /* Center Panel - REPL & Results */
+        .repl-container { height: 60%; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
+        #code-editor {
+            flex-grow: 1;
+            background: #1e1e2e;
+            color: #a6e3a1;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            padding: 15px;
+            border: none;
+            resize: none;
+            outline: none;
+            white-space: pre;
+            line-height: 1.5;
+        }
+        .btn-run {
+            background: var(--accent);
+            color: #1e1e2e;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .btn-run:hover { filter: brightness(1.2); }
+        .btn-run:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+        .results-container { height: 40%; display: flex; flex-direction: column; background: #11111b; }
+        #terminal-output {
+            flex-grow: 1;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: var(--text-main);
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .term-success { color: var(--success); }
+        .term-error { color: var(--error); }
+
+        /* Right Panel - State & Memory */
+        .state-container { padding: 15px; flex-grow: 1; overflow-y: auto; }
+        .memory-block {
+            background: #11111b;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: var(--warning);
+            margin-bottom: 15px;
+            border-left: 3px solid var(--warning);
+            white-space: pre-wrap;
+            transition: background-color 0.3s;
+        }
+        .concept-feedback {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+
+        /* Gamification Header */
+        .xp-bar-container { background: #313244; height: 10px; border-radius: 5px; margin-top: 5px; overflow: hidden; }
+        .xp-bar { background: var(--success); height: 100%; width: 0%; transition: width 0.5s; }
+        
+        /* Loading Overlay */
+        #loader { position: absolute; top:0; left:0; width:100vw; height:100vh; background: var(--bg-color); z-index: 1000; display: flex; justify-content: center; align-items: center; color: var(--accent); font-size: 1.5rem; flex-direction: column;}
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px;}
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <div>Loading Python Search Engine...</div>
+    </div>
+
+    <!-- LEFT PANEL: Exercises -->
+    <div class="left-panel">
+        <div class="panel-header">
+            <div>Search 🔍 Lab@ULaw</div>
+            <div style="text-align: right; font-size: 0.8rem;">
+                Score: <span id="score-display" style="color:var(--success);">0</span>/40 | Lvl <span id="level-display">1</span> | <span id="xp-display">0</span> XP
+                <div class="xp-bar-container"><div class="xp-bar" id="xp-fill"></div></div>
+            </div>
+        </div>
+        <div class="exercise-list" id="exercise-list">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <!-- CENTER PANEL: REPL & Results -->
+    <div class="center-panel">
+        <div class="repl-container">
+            <div class="panel-header">
+                <div>Python 3 REPL</div>
+                <button class="btn-run" id="btn-run" disabled>Run Code (Shift+Enter)</button>
+            </div>
+            <textarea id="code-editor" spellcheck="false" placeholder="Write your search logic here..."></textarea>
+        </div>
+        <div class="results-container">
+            <div class="panel-header" style="background: #11111b; border-top: 1px solid var(--border);">Execution Output</div>
+            <div id="terminal-output">Waiting for Python to initialize...</div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: State/Memory Feedback -->
+    <div class="right-panel">
+        <div class="panel-header">Search Tree Visualizer</div>
+        <div class="state-container">
+            <div class="concept-feedback" id="concept-text">
+                When you execute search code, the internal state of your Frontier, Explored sets, and Heuristics will appear here.
+            </div>
+            <br>
+            <div class="memory-block" id="memory-block">
+// Graph Uninitialized
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA: 40 Scaffolded Exercises mapped to Workshop 5 PDF ---
+        const exercises = [
+            // MODULE 1: Problem Formulation (1-7)
+            { id: 1, title: "1. The Essence of Search", task: "Search is the exploration of a state space. Return the string 'exploration' to begin.", hint: "return 'exploration'", thought: "Before we take action in the real world, we simulate sequences of actions in a mental model.", challenge: "", code: "def search_definition():\n    pass", test: "assert search_definition() == 'exploration'\nprint('STATE: {\"status\": \"Search Initialized\"}')\nprint('Mission Complete!')" },
+            { id: 2, title: "2. The 5 Components", task: "To run a search, we need 5 components. Return a list: `['Initial State', 'Actions', 'Transition Model', 'Goal Test', 'Path Cost']`.", hint: "Return the exact list of strings.", thought: "Without formalizing the problem precisely, the computer cannot search the state space.", challenge: "How would you formulate a Rubik's Cube problem?", code: "def get_search_components():\n    pass", test: "res = get_search_components()\nassert len(res) == 5\nassert 'Initial State' in res\nprint('STATE: {\"formulation\": \"Complete\", \"components\": 5}')\nprint('Mission Complete!')" },
+            { id: 3, title: "3. The Initial State (S0)", task: "Write a function `get_start()` that returns the starting junction 'London' for a GPS app.", hint: "return 'London'", thought: "S_0 represents exactly where the agent is right now.", challenge: "", code: "def get_start():\n    pass", test: "assert get_start() == 'London'\nprint('STATE: {\"S_0\": \"London\"}')\nprint('Mission Complete!')" },
+            { id: 4, title: "4. Actions(s)", task: "Given `state = 'London'`, return a list of possible roads to take: `['M1_North', 'M4_West']`.", hint: "return ['M1_North', 'M4_West']", thought: "This defines the edges of our state space graph from the current node.", challenge: "", code: "def get_actions(state):\n    pass", test: "assert 'M1_North' in get_actions('London')\nprint('STATE: {\"available_actions\": 2}')\nprint('Mission Complete!')" },
+            { id: 5, title: "5. Transition Model", task: "Write `result(state, action)`. If state is 'London' and action is 'M1_North', return 'Leeds'.", hint: "if state == 'London' and action == 'M1_North': return 'Leeds'", thought: "Result(s, a) -> s'. This tells us where an action actually takes us.", challenge: "Return 'Unknown' for bad inputs.", code: "def result(state, action):\n    pass", test: "assert result('London', 'M1_North') == 'Leeds'\nprint('STATE: {\"Transition\": {\"London -> M1_North\": \"Leeds\"}}')\nprint('Mission Complete!')" },
+            { id: 6, title: "6. Goal Test", task: "Write `is_goal(state)`. Return True if the state is 'Edinburgh'.", hint: "return state == 'Edinburgh'", thought: "The algorithm needs to know when to stop searching!", challenge: "", code: "def is_goal(state):\n    pass", test: "assert is_goal('Edinburgh') == True\nprint('STATE: {\"Goal_Test_Fn\": \"Active\"}')\nprint('Mission Complete!')" },
+            { id: 7, title: "7. Path Cost", task: "Write `path_cost(current_cost, step_cost)`. Return their sum.", hint: "return current_cost + step_cost", thought: "c(s, a, s'). We want to find the solution with the lowest overall path cost.", challenge: "", code: "def path_cost(current_cost, step_cost):\n    pass", test: "assert path_cost(10, 5) == 15\nprint('STATE: {\"cumulative_cost\": 15}')\nprint('Mission Complete!')" },
+            
+            // MODULE 2: Data Structures & The Tree (8-13)
+            { id: 8, title: "8. Graph vs Tree", task: "State space graph is massive and cyclic. Search tree is constructed on the fly. Return 'acyclic' to describe the Search tree.", hint: "return 'acyclic'", thought: "The tree 'unrolls' the graph. It guarantees we don't draw infinite loops... if we manage our memory right.", challenge: "", code: "def search_tree_prop():\n    pass", test: "assert search_tree_prop() == 'acyclic'\nprint('STATE: {\"Tree_Structure\": \"Acyclic\"}')\nprint('Mission Complete!')" },
+            { id: 9, title: "9. Frontier and Explored", task: "Return a tuple `(frontier, explored)` where frontier is a list `['A']` and explored is a set `{'Start'}`.", hint: "return (['A'], {'Start'})", thought: "Frontier = nodes waiting to be explored. Explored = nodes already visited.", challenge: "", code: "def init_structures():\n    pass", test: "f, e = init_structures()\nassert type(e) is set\nprint('STATE: {\"Frontier_Size\": 1, \"Explored_Size\": 1}')\nprint('Mission Complete!')" },
+            { id: 10, title: "10. The Queue Data Structure", task: "How we choose the next node from the frontier determines the algorithm. Return 'queue' as the generic data structure used.", hint: "return 'queue'", thought: "It could be a FIFO queue, LIFO queue (stack), or Priority queue.", challenge: "", code: "def get_base_structure():\n    pass", test: "assert get_base_structure() == 'queue'\nprint('STATE: {\"Base_Structure\": \"Queue\"}')\nprint('Mission Complete!')" },
+            { id: 11, title: "11. FIFO Queue (BFS)", task: "Breadth-First Search uses a First-In, First-Out queue. Using `q = ['A', 'B']`, return the first item ('A') and remove it.", hint: "val = q.pop(0)\nreturn val", thought: "Like waiting in line – first come, first served. Explores level by level.", challenge: "", code: "def simulate_bfs_queue():\n    q = ['A', 'B']\n    pass", test: "assert simulate_bfs_queue() == 'A'\nprint('STATE: {\"Queue_Type\": \"FIFO\", \"Popped\": \"A\"}')\nprint('Mission Complete!')" },
+            { id: 12, title: "12. LIFO Stack (DFS)", task: "Depth-First Search uses a Last-In, First-Out stack. Using `stack = ['A', 'B']`, return the last item ('B') and remove it.", hint: "return stack.pop()", thought: "Like a stack of plates. Explores deeply down one path before backtracking.", challenge: "", code: "def simulate_dfs_stack():\n    stack = ['A', 'B']\n    pass", test: "assert simulate_dfs_stack() == 'B'\nprint('STATE: {\"Queue_Type\": \"LIFO (Stack)\", \"Popped\": \"B\"}')\nprint('Mission Complete!')" },
+            { id: 13, title: "13. Priority Queue (UCS/A*)", task: "Uniform-Cost Search prioritizes lowest cost. Import `heapq`. Create `pq = []`. Push `(10, 'B')` and `(5, 'A')`. Pop and return the tuple.", hint: "import heapq\nheapq.heappush(pq, (10, 'B'))\n...\nreturn heapq.heappop(pq)", thought: "Nodes are prioritised based on some 'cost' or 'guiding' value. Always explore the most promising first.", challenge: "", code: "import heapq\ndef simulate_ucs_queue():\n    pq = []\n    pass", test: "res = simulate_ucs_queue()\nassert res[0] == 5 and res[1] == 'A'\nprint('STATE: {\"Queue_Type\": \"PriorityQueue\", \"Lowest_Cost\": 5}')\nprint('Mission Complete!')" },
+            
+            // MODULE 3: Uninformed Search Algorithm Analysis (14-20)
+            { id: 14, title: "14. Measuring Performance", task: "We evaluate search on 4 criteria. Return `['Completeness', 'Optimality', 'Time', 'Space']`.", hint: "Return the exact list.", thought: "Complete? Optimal? Time complexity? Space (memory) complexity?", challenge: "", code: "def get_metrics():\n    pass", test: "assert len(get_metrics()) == 4\nassert 'Completeness' in get_metrics()\nprint('STATE: {\"Evaluation_Metrics\": \"Loaded\"}')\nprint('Mission Complete!')" },
+            { id: 15, title: "15. BFS Analysis", task: "Does BFS guarantee finding the optimal (shallowest) solution if step costs are equal? Return True.", hint: "return True", thought: "It behaves like waves expanding outward. But it is a massive memory hog O(b^d).", challenge: "", code: "def is_bfs_optimal():\n    pass", test: "assert is_bfs_optimal() == True\nprint('STATE: {\"Algorithm\": \"BFS\", \"Optimal\": True}')\nprint('Mission Complete!')" },
+            { id: 16, title: "16. DFS Weakness", task: "DFS is memory efficient O(bm). But what happens in an infinite state space? Return 'fails in infinite paths'.", hint: "return 'fails in infinite paths'", thought: "It runs down a single path until it hits a dead end. If there is no dead end, it runs forever.", challenge: "", code: "def dfs_weakness():\n    pass", test: "assert dfs_weakness() == 'fails in infinite paths'\nprint('STATE: {\"Algorithm\": \"DFS\", \"Completeness\": False}')\nprint('Mission Complete!')" },
+            { id: 17, title: "17. Iterative Deepening (IDS)", task: "IDS combines the memory efficiency of DFS and optimality of BFS. What does it incrementally increase? Return 'Depth limit'.", hint: "return 'Depth limit'", thought: "Run DFS with limit 1, then 2, then 3... Avoids choosing a bad depth limit.", challenge: "", code: "def ids_mechanism():\n    pass", test: "assert ids_mechanism() == 'Depth limit'\nprint('STATE: {\"Algorithm\": \"IDS\", \"Mechanism\": \"Iterative Depth\"}')\nprint('Mission Complete!')" },
+            { id: 18, title: "18. Uniform Cost Search", task: "UCS expands nodes based on past path cost, often denoted as `g(n)`. Write `g_score(current, step)` returning their sum.", hint: "return current + step", thought: "UCS guarantees the optimal path for any graph with positive costs. It is Dijkstra's algorithm.", challenge: "", code: "def g_score(current, step):\n    pass", test: "assert g_score(10, 5) == 15\nprint('STATE: {\"Algorithm\": \"UCS\", \"g(n)\": 15}')\nprint('Mission Complete!')" },
+            { id: 19, title: "19. Bidirectional Search", task: "Search from start and goal simultaneously. Stop when they meet in the middle. Reduces complexity massively to what? Return '2b^(d/2)'.", hint: "Return '2b^(d/2)'", thought: "Massive time saving, but requires knowing the goal state in advance.", challenge: "", code: "def bidirectional_math():\n    pass", test: "assert bidirectional_math() == '2b^(d/2)'\nprint('STATE: {\"Algorithm\": \"Bidirectional\", \"Complexity\": \"2b^(d/2)\"}')\nprint('Mission Complete!')" },
+            { id: 20, title: "20. Uninformed Summary", task: "If you have an unweighted graph, you use BFS. If you have memory constraints, you use IDS. Return the tuple `('BFS', 'IDS')`.", hint: "return ('BFS', 'IDS')", thought: "Knowing which algorithm to pick is the art of AI architecture.", challenge: "", code: "def algorithm_selector():\n    pass", test: "assert algorithm_selector() == ('BFS', 'IDS')\nprint('STATE: {\"Summary\": \"Uninformed Search Mastered\"}')\nprint('Mission Complete!')" },
+            
+            // MODULE 4: Informed (Heuristic) Search (21-28)
+            { id: 21, title: "21. The Heuristic Function", task: "Unlike blind search, we now have a compass. What does `h(n)` estimate? Return 'cost to goal'.", hint: "return 'cost to goal'", thought: "It tells us which nodes are 'promising' according to some criterion.", challenge: "", code: "def what_is_h():\n    pass", test: "assert what_is_h() == 'cost to goal'\nprint('STATE: {\"h(n)\": \"Heuristic Estimate Active\"}')\nprint('Mission Complete!')" },
+            { id: 22, title: "22. Greedy Best-First", task: "Greedy search expands the node that seems closest. Given a dict `h = {'A': 10, 'B': 2}`, return the key with the minimum value.", hint: "return min(h, key=h.get)", thought: "It only looks at h(n). Not optimal: Might take a longer path if the heuristic is misleading (driving into a cul-de-sac).", challenge: "", code: "def greedy_choice(h_dict):\n    pass", test: "assert greedy_choice({'A': 10, 'B': 2}) == 'B'\nprint('STATE: {\"Algorithm\": \"Greedy\", \"Selected\": \"B\"}')\nprint('Mission Complete!')" },
+            { id: 23, title: "23. A* Search Math", task: "A* minimizes total estimated cost by adding a heuristic to Dijkstra. Write `f_score(g, h)` that returns their sum.", hint: "return g + h", thought: "f(n) = g(n) + h(n). Reality + Estimate.", challenge: "", code: "def f_score(g, h):\n    pass", test: "assert f_score(5, 3) == 8\nprint('STATE: {\"Algorithm\": \"A*\", \"f(n)\": 8}')\nprint('Mission Complete!')" },
+            { id: 24, title: "24. Admissible Heuristics", task: "A* is optimal ONLY IF the heuristic never overestimates the true cost (optimism). Write `is_admissible(h, true_cost)`.", hint: "return h <= true_cost", thought: "If h(n) overestimates, A* might skip the optimal path thinking it is too expensive.", challenge: "", code: "def is_admissible(h, true_cost):\n    pass", test: "assert is_admissible(5, 10) == True\nassert is_admissible(15, 10) == False\nprint('STATE: {\"Heuristic\": \"Admissibility Checked\"}')\nprint('Mission Complete!')" },
+            { id: 25, title: "25. Euclidean Distance", task: "A common admissible heuristic for maps is straight-line distance. Return `math.sqrt((x2-x1)**2 + (y2-y1)**2)`. Import math.", hint: "Use math.sqrt(...)", thought: "You can't drive faster than a straight line, so it never overestimates.", challenge: "", code: "import math\ndef euclidean(x1, y1, x2, y2):\n    pass", test: "assert euclidean(0, 0, 3, 4) == 5.0\nprint('STATE: {\"Heuristic_Type\": \"Euclidean\", \"Value\": 5.0}')\nprint('Mission Complete!')" },
+            { id: 26, title: "26. Manhattan Distance", task: "For grid puzzles (8-puzzle), we use Manhattan distance (sum of x and y distances). Return `abs(x1-x2) + abs(y1-y2)`.", hint: "return abs(x1-x2) + abs(y1-y2)", thought: "It is admissible. Is it better than 'number of misplaced tiles'? Yes, because it is closer to the true cost (it dominates).", challenge: "", code: "def manhattan(x1, y1, x2, y2):\n    pass", test: "assert manhattan(0, 0, 2, 1) == 3\nprint('STATE: {\"Heuristic_Type\": \"Manhattan\", \"Value\": 3}')\nprint('Mission Complete!')" },
+            { id: 27, title: "27. Dominance", task: "If h2(n) >= h1(n) for all n, and both are admissible, which is better? Return 'h2'.", hint: "return 'h2'", thought: "A dominating heuristic explores fewer nodes because its f(n) values rise faster towards the true cost.", challenge: "", code: "def best_heuristic():\n    pass", test: "assert best_heuristic() == 'h2'\nprint('STATE: {\"Dominance\": \"h2 selected\"}')\nprint('Mission Complete!')" },
+            { id: 28, title: "28. Consistency", task: "A stricter form of admissibility required for Graph Search is Consistency. Return True if `h(A) <= cost(A to B) + h(B)`.", hint: "return h_a <= cost_a_b + h_b", thought: "This ensures that f(n) is non-decreasing along any path, so the first time we expand a node, we have found the optimal path to it.", challenge: "", code: "def is_consistent(h_a, cost_a_b, h_b):\n    pass", test: "assert is_consistent(4, 1, 3) == True\nprint('STATE: {\"Heuristic\": \"Consistent (Monotonic)\"}')\nprint('Mission Complete!')" },
+
+            // MODULE 5: Adversarial Search (Games) (29-35)
+            { id: 29, title: "29. Minimax Idea", task: "What happens when the graph is too big (Go, Chess) or someone fights back? We use Adversarial search. Return 'Minimax'.", hint: "return 'Minimax'", thought: "Consider a zero-sum game scenario. You want to maximize, opponent wants to minimize.", challenge: "", code: "def get_game_algo():\n    pass", test: "assert get_game_algo() == 'Minimax'\nprint('STATE: {\"Domain\": \"Game Theory\"}')\nprint('Mission Complete!')" },
+            { id: 30, title: "30. MAX Node", task: "MAX wants to maximize score. Given future options `[3, 12, 8]`, return MAX's choice.", hint: "return max(scores)", thought: "Assume the opponent plays perfectly.", challenge: "", code: "def max_play(scores):\n    pass", test: "assert max_play([3, 12, 8]) == 12\nprint('STATE: {\"Turn\": \"MAX\", \"Value\": 12}')\nprint('Mission Complete!')" },
+            { id: 31, title: "31. MIN Node", task: "MIN wants to minimize your score. Given `[3, 12, 8]`, return MIN's choice.", hint: "return min(scores)", thought: "The algorithm recursively checks every move to the bottom, then bubbles values up.", challenge: "", code: "def min_play(scores):\n    pass", test: "assert min_play([3, 12, 8]) == 3\nprint('STATE: {\"Turn\": \"MIN\", \"Value\": 3}')\nprint('Mission Complete!')" },
+            { id: 32, title: "32. Alpha-Beta Pruning", task: "Don't check paths that don't matter. If MIN evaluates a move to `v=2`, and MAX previously secured a minimum guarantee of `alpha=5`, return True to stop checking.", hint: "return v <= alpha", thought: "If we find a move that is 'too good' for the opponent, we stop checking that branch. Doubles search depth capability!", challenge: "", code: "def prune(v, alpha):\n    pass", test: "assert prune(2, 5) == True\nprint('STATE: {\"Alpha-Beta\": \"Branch Pruned\"}')\nprint('Mission Complete!')" },
+            { id: 33, title: "33. MCTS Concept", task: "Monte-Carlo Tree Search (MCTS) implements 'learn by playing'. Return 'AlphaGo' as the famous system that used this.", hint: "return 'AlphaGo'", thought: "Used when branching factor is too high for full board strategy (e.g. Go has branching factor of 250).", challenge: "", code: "def famous_mcts():\n    pass", test: "assert famous_mcts() == 'AlphaGo'\nprint('STATE: {\"System\": \"MCTS Active\"}')\nprint('Mission Complete!')" },
+            { id: 34, title: "34. MCTS Phases", task: "MCTS repeats 4 steps. Return the list: `['Selection', 'Expansion', 'Simulation', 'Backpropagation']`.", hint: "Return the exact list.", thought: "Simulation (playout) involves playing random moves until the end of the game to get a score.", challenge: "", code: "def mcts_phases():\n    pass", test: "assert mcts_phases()[2] == 'Simulation'\nprint('STATE: {\"Phases_Loaded\": 4}')\nprint('Mission Complete!')" },
+            { id: 35, title: "35. MCTS Rollout", task: "In the Simulation phase, what kind of moves are played until the end? Return 'random'.", hint: "return 'random'", thought: "By playing thousands of random games from a position, it builds a statistical probability of winning.", challenge: "", code: "def rollout_type():\n    pass", test: "assert rollout_type() == 'random'\nprint('STATE: {\"Simulation_Policy\": \"Random Playouts\"}')\nprint('Mission Complete!')" },
+
+            // MODULE 6: Local Search & Wrap-up (36-40)
+            { id: 36, title: "36. Local Search", task: "Sometimes we don't care about the path, just the end state (e.g. N-Queens). Return 'Hill Climbing'.", hint: "return 'Hill Climbing'", thought: "Start random. Move to neighbor that reduces attacks. Repeat.", challenge: "", code: "def local_search_algo():\n    pass", test: "assert local_search_algo() == 'Hill Climbing'\nprint('STATE: {\"Algorithm\": \"Local Search\"}')\nprint('Mission Complete!')" },
+            { id: 37, title: "37. Local Maxima", task: "The risk of Hill Climbing is getting stuck on a small hill. Return 'Local Maxima'.", hint: "return 'Local Maxima'", thought: "You can't see the highest peak because you only look at your immediate neighbors.", challenge: "", code: "def climbing_risk():\n    pass", test: "assert climbing_risk() == 'Local Maxima'\nprint('STATE: {\"Risk\": \"Stuck in Local Maxima\"}')\nprint('Mission Complete!')" },
+            { id: 38, title: "38. Simulated Annealing", task: "To avoid local maxima, we 'shake the box'. We allow 'bad' moves early on based on what? Return 'temperature'.", hint: "return 'temperature'", thought: "Reduces probability of bad moves over time (cooling). Based on metallurgy physics.", challenge: "", code: "def annealing_parameter():\n    pass", test: "assert annealing_parameter() == 'temperature'\nprint('STATE: {\"Algorithm\": \"Simulated Annealing\", \"Temp\": \"High\"}')\nprint('Mission Complete!')" },
+            { id: 39, title: "39. Genetic Algorithms", task: "GAs simulate natural selection. Return the 3 key operators: `['Selection', 'Crossover', 'Mutation']`.", hint: "Return the list of strings.", thought: "Selection keeps the best. Crossover combines parents. Mutation adds random changes to explore new spaces.", challenge: "", code: "def ga_operators():\n    pass", test: "assert len(ga_operators()) == 3\nprint('STATE: {\"Algorithm\": \"Genetic Algorithm\"}')\nprint('Mission Complete!')" },
+            { id: 40, title: "40. Algorithm Master", task: "Weighted graph? A*. Memory constraints? IDDFS. Unweighted? BFS. Game? MCTS. Return True to accept your rank.", hint: "return True", thought: "You have mastered the theory of AI Search Architectures.", challenge: "Design the logic for a self-driving car routing system.", code: "def accept_rank():\n    pass", test: "assert accept_rank() == True\nprint('STATE: {\"Module\": \"MASTERED\", \"Rank\": \"Search Architect\"}')\nprint('Mission 40 Complete! You are a Search Architect.')" }
+        ];
+
+        let currentExId = 1;
+        let xp = 0;
+        let completedCount = 0;
+        let failCount = 0;
+        let pyodideReady = false;
+        let pyodideInstance = null;
+
+        // UI Elements
+        const exList = document.getElementById('exercise-list');
+        const codeEditor = document.getElementById('code-editor');
+        const btnRun = document.getElementById('btn-run');
+        const termOut = document.getElementById('terminal-output');
+        const loader = document.getElementById('loader');
+        const xpDisplay = document.getElementById('xp-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+        const xpFill = document.getElementById('xp-fill');
+        const memoryBlock = document.getElementById('memory-block');
+        const conceptText = document.getElementById('concept-text');
+
+        // Initialize App
+        async function init() {
+            renderExercises();
+            loadExercise(1);
+
+            try {
+                pyodideInstance = await loadPyodide();
+                // Setup Python stdout capture
+                await pyodideInstance.runPythonAsync(`
+import sys
+import io
+class CaptureStdout(list):
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self._stringio = io.StringIO()
+        return self
+    def __exit__(self, *args):
+        self.extend(self._stringio.getvalue().splitlines())
+        del self._stringio
+        sys.stdout = self._stdout
+                `);
+                pyodideReady = true;
+                btnRun.disabled = false;
+                btnRun.innerText = "Run Code (Shift+Enter)";
+                loader.style.display = "none";
+                termOut.innerText = "Python Environment Ready.\nSelect an exercise and write your code.";
+            } catch (err) {
+                termOut.innerText = "Error loading Python environment: " + err;
+                termOut.className = "term-error";
+            }
+        }
+
+        function renderExercises() {
+            exList.innerHTML = '';
+            exercises.forEach(ex => {
+                const div = document.createElement('div');
+                div.className = `exercise-item ${ex.id === 1 ? 'unlocked active' : ''}`;
+                div.id = `ex-${ex.id}`;
+                div.onclick = () => { if(div.classList.contains('unlocked') || div.classList.contains('completed')) loadExercise(ex.id); };
+                
+                let inner = `<strong>${ex.title}</strong>`;
+                inner += `<div class="ex-details">
+                    <p style="margin-bottom: 8px;">${ex.task}</p>
+                    <button class="hint-btn" onclick="toggleHint(event, ${ex.id})">Show Hint</button>
+                    <p class="hint-text" id="hint-${ex.id}">Hint: ${ex.hint}</p>
+                    <div class="food-for-thought">💭 <b>Food for Thought:</b> ${ex.thought}</div>
+                    ${ex.challenge ? `<div class="challenge">🔥 <b>Challenge:</b> ${ex.challenge}</div>` : ''}
+                </div>`;
+                div.innerHTML = inner;
+                exList.appendChild(div);
+            });
+        }
+
+        function toggleHint(e, id) {
+            e.stopPropagation();
+            const hint = document.getElementById(`hint-${id}`);
+            hint.style.display = hint.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function loadExercise(id) {
+            document.querySelectorAll('.exercise-item').forEach(el => el.classList.remove('active'));
+            document.getElementById(`ex-${id}`).classList.add('active');
+            currentExId = id;
+            failCount = 0; // Reset fail counter for new exercise
+            
+            const ex = exercises.find(e => e.id === id);
+            codeEditor.value = ex.code;
+            termOut.innerText = `Loaded ${ex.title}... waiting for execution.`;
+            termOut.className = '';
+            
+            // Update Right Panel Context
+            conceptText.innerHTML = `<strong>Current Concept:</strong><br>${ex.title}<br><br>As you write code, watch this panel to see how your logic affects the internal structures like the Frontier, Explored Set, or Heuristic Evaluation.`;
+            memoryBlock.innerText = "// Awaiting function execution...";
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            btnRun.disabled = true;
+            termOut.innerText = "Running...";
+            termOut.className = "";
+
+            const ex = exercises.find(e => e.id === currentExId);
+            const userCode = codeEditor.value;
+            const testCode = ex.test;
+
+            // Wrap user code and test code in capture block
+            const pythonScript = `
+with CaptureStdout() as output:
+    try:
+${userCode.split('\n').map(line => '        ' + line).join('\n')}
+${testCode.split('\n').map(line => '        ' + line).join('\n')}
+    except AssertionError:
+        print("TEST_FAILED: Output did not match expected result. Check your logic.")
+    except Exception as e:
+        print(f"ERROR: {e}")
+output
+`;
+
+            try {
+                let result = await pyodideInstance.runPythonAsync(pythonScript);
+                let outList = result.toJs();
+                
+                let displayOut = "";
+                let passed = false;
+                let stateData = null;
+
+                outList.forEach(line => {
+                    if (line.includes("TEST_FAILED") || line.includes("ERROR")) {
+                        displayOut += "❌ " + line + "\n";
+                    } else if (line.startsWith("STATE:")) {
+                        stateData = line.replace("STATE:", "").trim();
+                    } else {
+                        displayOut += line + "\n";
+                        if (line.includes("Complete")) passed = true;
+                    }
+                });
+
+                if (passed) {
+                    termOut.innerText = "✅ Tests Passed!\n" + displayOut;
+                    termOut.className = "term-success";
+                    handleSuccess(stateData);
+                } else {
+                    failCount++;
+                    let skipMessage = "";
+                    
+                    // Skip Logic: Unlock next exercise after 3 fails
+                    if (failCount >= 3 && currentExId < 40) {
+                        skipMessage = "\n\n💡 It looks like you're stuck. The next exercise has been unlocked so you can skip this and come back later!";
+                        const nextDiv = document.getElementById(`ex-${currentExId + 1}`);
+                        if (nextDiv && !nextDiv.classList.contains('unlocked')) {
+                            nextDiv.classList.add('unlocked');
+                        }
+                    }
+                    
+                    termOut.innerText = "Execution Output:\n" + displayOut + skipMessage;
+                    termOut.className = "term-error";
+                }
+
+            } catch (err) {
+                termOut.innerText = "Syntax Error:\n" + err;
+                termOut.className = "term-error";
+            }
+            btnRun.disabled = false;
+        }
+
+        function handleSuccess(stateData) {
+            const exDiv = document.getElementById(`ex-${currentExId}`);
+            
+            // Update Right Panel (State visualizer)
+            if (stateData) {
+                try {
+                    let formattedObj = JSON.stringify(JSON.parse(stateData), null, 2);
+                    memoryBlock.innerText = `SEARCH_MEMORY = ${formattedObj}`;
+                    
+                    // Highlight effect
+                    memoryBlock.style.backgroundColor = "rgba(245, 194, 231, 0.2)";
+                    setTimeout(() => memoryBlock.style.backgroundColor = "#11111b", 500);
+                } catch(e) {
+                    memoryBlock.innerText = stateData;
+                }
+            }
+
+            if (!exDiv.classList.contains('completed')) {
+                exDiv.classList.add('completed');
+                
+                // Increment Score and XP
+                completedCount++;
+                scoreDisplay.innerText = completedCount;
+                xp += 100;
+                updateGamification();
+                
+                // Unlock next
+                if (currentExId < 40) {
+                    const nextDiv = document.getElementById(`ex-${currentExId + 1}`);
+                    if (!nextDiv.classList.contains('unlocked')) {
+                        nextDiv.classList.add('unlocked');
+                    }
+                    // Auto-scroll logic
+                    nextDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        }
+
+        function updateGamification() {
+            xpDisplay.innerText = xp;
+            let level = Math.floor(xp / 500) + 1;
+            levelDisplay.innerText = level;
+            
+            let percentage = ((xp % 500) / 500) * 100;
+            xpFill.style.width = `${percentage}%`;
+        }
+
+        // Event Listeners
+        btnRun.addEventListener('click', runCode);
+        
+        // Simple IDE functionality: Tab key spaces, Shift+Enter to run
+        codeEditor.addEventListener('keydown', function(e) {
+            if (e.key == 'Tab') {
+                e.preventDefault();
+                let start = this.selectionStart;
+                let end = this.selectionEnd;
+                this.value = this.value.substring(0, start) + "    " + this.value.substring(end);
+                this.selectionStart = this.selectionEnd = start + 4;
+            }
+            if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                btnRun.click();
+            }
+        });
+
+        // Start App
+        init();
+
+    </script>
+</body>
+</html>
