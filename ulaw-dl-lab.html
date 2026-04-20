@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ULaw Deep Learning Architect: Web Tutor</title>
+    <!-- Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-color: #11111b;
+            --panel-bg: #1e1e2e;
+            --text-main: #cdd6f4;
+            --text-muted: #a6adc8;
+            --accent: #9b27b0; /* ULaw Purple */
+            --accent-light: #d884e9;
+            --success: #a6e3a1;
+            --error: #f38ba8;
+            --warning: #f9e2af;
+            --border: #45475a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        .left-panel { width: 25%; border-right: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; }
+        .center-panel { width: 50%; display: flex; flex-direction: column; }
+        .right-panel { width: 25%; border-left: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; }
+
+        /* Headers */
+        .panel-header {
+            padding: 12px 15px;
+            background: #181825;
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            font-size: 1rem;
+            color: var(--accent-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-stats { display: flex; gap: 15px; align-items: center; font-size: 0.85rem; }
+        .reset-btn { background: var(--border); color: var(--text-main); border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+        .reset-btn:hover { background: var(--error); color: #111; }
+
+        /* Left Panel - Exercises */
+        .exercise-list { flex-grow: 1; overflow-y: auto; padding: 10px; }
+        .exercise-item {
+            padding: 10px; margin-bottom: 8px; border-radius: 6px; background: #313244;
+            cursor: pointer; border: 1px solid transparent; transition: 0.2s; opacity: 0.4; pointer-events: none;
+        }
+        .exercise-item.unlocked { opacity: 1; pointer-events: auto; }
+        .exercise-item:hover.unlocked { background: #45475a; }
+        .exercise-item.active { border-color: var(--accent-light); background: #45475a; }
+        .exercise-item.completed { border-left: 4px solid var(--success); }
+        
+        .ex-details { display: none; margin-top: 10px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;}
+        .exercise-item.active .ex-details { display: block; }
+        
+        .hint-btn { background: none; border: 1px solid var(--warning); color: var(--warning); padding: 2px 8px; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 0.75rem;}
+        .hint-text { display: none; color: var(--warning); margin-top: 5px; font-style: italic; }
+
+        .food-for-thought { background: rgba(155, 39, 176, 0.15); padding: 8px; border-radius: 4px; margin-top: 8px; color: var(--accent-light); }
+        .challenge { background: rgba(243, 139, 168, 0.1); padding: 8px; border-radius: 4px; margin-top: 8px; color: var(--error); }
+
+        /* Center Panel - REPL & Results */
+        .repl-container { height: 60%; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
+        #code-editor {
+            flex-grow: 1; background: #1e1e2e; color: #a6e3a1; font-family: 'Courier New', Courier, monospace;
+            font-size: 14px; padding: 15px; border: none; resize: none; outline: none; white-space: pre; line-height: 1.5;
+        }
+        .btn-run {
+            background: var(--accent); color: #fff; border: none; padding: 6px 12px;
+            cursor: pointer; font-weight: bold; font-size: 0.85rem; border-radius: 4px; transition: 0.2s;
+        }
+        .btn-run:hover { filter: brightness(1.2); }
+        .btn-run:disabled { background: var(--text-muted); cursor: not-allowed; }
+
+        .results-container { height: 40%; display: flex; flex-direction: column; background: #11111b; }
+        #terminal-output {
+            flex-grow: 1; padding: 15px; font-family: 'Courier New', Courier, monospace;
+            font-size: 13px; color: var(--text-main); overflow-y: auto; white-space: pre-wrap;
+        }
+        .term-success { color: var(--success); }
+        .term-error { color: var(--error); }
+        .term-warning { color: var(--warning); }
+
+        /* Right Panel - State & DL Playground */
+        .inspector-container { height: 40%; padding: 15px; overflow-y: auto; border-bottom: 1px solid var(--border); }
+        .memory-block {
+            background: #11111b; padding: 10px; border-radius: 6px; font-family: 'Courier New', Courier, monospace;
+            font-size: 12px; color: var(--warning); margin-bottom: 10px; border-left: 3px solid var(--warning);
+            white-space: pre-wrap; transition: background-color 0.3s;
+        }
+        .concept-feedback { font-size: 0.85rem; line-height: 1.4; color: var(--text-muted); }
+
+        .playground-container { height: 60%; display: flex; flex-direction: column; background: #181825;}
+        .pg-controls { padding: 10px; display: flex; gap: 10px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); font-size: 0.85rem;}
+        .pg-btn { background: #313244; color: #fff; border: 1px solid var(--border); padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        .pg-btn:hover { background: var(--accent); }
+        #canvas-container { flex-grow: 1; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden; padding: 10px;}
+        canvas { background: #1e1e2e; border: 1px solid var(--border); border-radius: 4px; max-width: 100%; max-height: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3);}
+
+        /* Gamification Header */
+        .xp-bar-container { background: #313244; height: 6px; border-radius: 3px; margin-top: 3px; overflow: hidden; width: 100px; }
+        .xp-bar { background: var(--success); height: 100%; width: 0%; transition: width 0.5s; }
+        
+        /* Loading Overlay */
+        #loader { position: absolute; top:0; left:0; width:100vw; height:100vh; background: var(--bg-color); z-index: 1000; display: flex; justify-content: center; align-items: center; color: var(--accent-light); font-size: 1.5rem; flex-direction: column;}
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px;}
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <div>Loading Deep Learning Environment...</div>
+    </div>
+
+    <!-- LEFT PANEL: Exercises -->
+    <div class="left-panel">
+        <div class="panel-header">
+            <div>DNN🧠 Lab@ULaw</div>
+            <div class="header-stats">
+                <div>Score: <span id="score-display" style="color:var(--success);">0</span>/35</div>
+                <button class="reset-btn" onclick="resetApp()">Reset</button>
+            </div>
+        </div>
+        <div class="exercise-list" id="exercise-list"></div>
+    </div>
+
+    <!-- CENTER PANEL: REPL & Results -->
+    <div class="center-panel">
+        <div class="repl-container">
+            <div class="panel-header">
+                <div>Python 3 REPL</div>
+                <div style="display:flex; align-items:center; gap: 15px;">
+                    <div style="font-size: 0.8rem;">Lvl <span id="level-display">1</span> | <span id="xp-display">0</span> XP
+                        <div class="xp-bar-container"><div class="xp-bar" id="xp-fill"></div></div>
+                    </div>
+                    <button class="btn-run" id="btn-run" disabled>Run Code (Shift+Enter)</button>
+                </div>
+            </div>
+            <textarea id="code-editor" spellcheck="false" placeholder="Write your neural network logic here..."></textarea>
+        </div>
+        <div class="results-container">
+            <div class="panel-header" style="background: #11111b; border-top: 1px solid var(--border);">Execution Output</div>
+            <div id="terminal-output">Waiting for Python to initialize...</div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: State/Memory & DL Playground -->
+    <div class="right-panel">
+        <div class="panel-header">Model Inspector</div>
+        <div class="inspector-container">
+            <div class="concept-feedback" id="concept-text">
+                When you execute code, your network parameters (weights, biases, activations) will be inspected here.
+            </div>
+            <br>
+            <div class="memory-block" id="memory-block">
+// Memory uninitialized
+            </div>
+        </div>
+        
+        <div class="panel-header" style="border-top: 1px solid var(--border);">Deep Learning Playground</div>
+        <div class="playground-container">
+            <div class="pg-controls">
+                <div>
+                    Act: <select id="pg-activation" style="background:#313244; color:#fff; border:none; padding:2px;">
+                        <option value="relu">ReLU</option>
+                        <option value="tanh">Tanh</option>
+                        <option value="sigmoid">Sigmoid</option>
+                    </select>
+                </div>
+                <div>Epoch: <span id="pg-epoch">0</span></div>
+                <button class="pg-btn" id="pg-play">Train</button>
+                <button class="pg-btn" id="pg-reset">Reset</button>
+            </div>
+            <div id="canvas-container">
+                <canvas id="dl-canvas" width="200" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA: 35 Scaffolded Exercises mapped to Deep Neural Networks PDF ---
+        const exercises = [
+            // PART 1: The Perceptron & Basics (Slides 1-10)
+            { id: 1, title: "1. The Biological Inspiration", task: "Neural Networks are an ancient technique in ML. Return the list `['Dendrite', 'Soma', 'Axon', 'Synapse']` representing biological neuron parts.", hint: "Return the exact list of strings.", thought: "Artificial neural networks take inspiration from biology, but they are mathematical models, not physical brains.", challenge: "", code: "def bio_neuron():\n    pass", test: "assert 'Soma' in bio_neuron()\nprint('STATE: {\"Inspiration\": \"Biological Neuron\"}')\nprint('Mission Complete!')" },
+            { id: 2, title: "2. Artificial Neuron Input", task: "A perceptron takes inputs `x` and multiplies them by weights `w`. Given `x = 2.0` and `w = 1.7`, return their product.", hint: "return x * w", thought: "This is the core computation of the McCullogh-Pitts neuron and Rosenblatt's Perceptron.", challenge: "What if weight is negative?", code: "def input_weight(x, w):\n    pass", test: "assert input_weight(2.0, 1.7) == 3.4\nprint('STATE: {\"x\": 2.0, \"w\": 1.7, \"weighted_x\": 3.4}')\nprint('Mission Complete!')" },
+            { id: 3, title: "3. The Weighted Sum", task: "A neuron sums multiple weighted inputs. Given `wx1 = 3.4` and `wx2 = 1.8`, return their sum.", hint: "return wx1 + wx2", thought: "The sum represents how much total 'signal' the neuron is receiving from the previous layer.", challenge: "", code: "def weighted_sum(wx1, wx2):\n    pass", test: "assert round(weighted_sum(3.4, 1.8), 1) == 5.2\nprint('STATE: {\"Sum_w_x\": 5.2}')\nprint('Mission Complete!')" },
+            { id: 4, title: "4. The Bias Term", task: "We add a bias term `b` to the sum. Given `sum_wx = 5.2` and `b = 1.2`, return `sum_wx + b`.", hint: "return sum_wx + b", thought: "The bias allows the activation function to be shifted left or right, reflecting errors or 'baseline' firing rates.", challenge: "", code: "def add_bias(sum_wx, b):\n    pass", test: "assert round(add_bias(5.2, 1.2), 1) == 6.4\nprint('STATE: {\"z_value\": 6.4, \"bias\": 1.2}')\nprint('Mission Complete!')" },
+            { id: 5, title: "5. Activation Function Role", task: "The sum is passed through an activation function. Return the symbol `theta` representing the threshold/activation.", hint: "return 'theta'", thought: "This enables the network to be more expressive and solve non-linear problems.", challenge: "", code: "def activation_symbol():\n    pass", test: "assert activation_symbol() == 'theta'\nprint('STATE: {\"Function\": \"Activation applied to sum\"}')\nprint('Mission Complete!')" },
+
+            // PART 2: Activation Functions (Slide 13)
+            { id: 6, title: "6. Linear Activation", task: "Linear activation does nothing. Return `x`.", hint: "return x", thought: "If all activations are linear, a 100-layer network collapses mathematically into a single layer.", challenge: "", code: "def linear(x):\n    pass", test: "assert linear(5.5) == 5.5\nprint('STATE: {\"Activation\": \"Linear\", \"Output\": 5.5}')\nprint('Mission Complete!')" },
+            { id: 7, title: "7. Sigmoid Activation", task: "Squashes values between 0 and 1. Used for probability. Return '0 to 1'.", hint: "return '0 to 1'", thought: "Historically popular, but suffers from 'vanishing gradients' on deep networks.", challenge: "", code: "def sigmoid_range():\n    pass", test: "assert sigmoid_range() == '0 to 1'\nprint('STATE: {\"Activation\": \"Sigmoid\", \"Range\": \"(0, 1)\"}')\nprint('Mission Complete!')" },
+            { id: 8, title: "8. Tanh Activation", task: "Similar to sigmoid, but centered at zero. Return its range: '-1 to 1'.", hint: "return '-1 to 1'", thought: "Often performs better than sigmoid because outputs are zero-centered, making optimization easier.", challenge: "", code: "def tanh_range():\n    pass", test: "assert tanh_range() == '-1 to 1'\nprint('STATE: {\"Activation\": \"Tanh\", \"Range\": \"(-1, 1)\"}')\nprint('Mission Complete!')" },
+            { id: 9, title: "9. ReLU Activation", task: "Rectified Linear Unit. Returns `x` if `x > 0`, else `0`. Implement `relu(x)`.", hint: "return max(0, x)", thought: "The most popular activation in deep learning. Solves the vanishing gradient problem efficiently.", challenge: "", code: "def relu(x):\n    pass", test: "assert relu(-5) == 0 and relu(5) == 5\nprint('STATE: {\"Activation\": \"ReLU\", \"Output\": \"max(0, x)\"}')\nprint('Mission Complete!')" },
+            { id: 10, title: "10. Softmax", task: "Used in the final layer for multi-class problems. Turns scores into probabilities summing to 1. Return 'probabilities'.", hint: "return 'probabilities'", thought: "Softmax allows the network to say 'I am 90% sure this is a cat, and 10% sure it is a dog'.", challenge: "", code: "def softmax_output():\n    pass", test: "assert softmax_output() == 'probabilities'\nprint('STATE: {\"Activation\": \"Softmax\", \"Sums_to\": 1.0}')\nprint('Mission Complete!')" },
+
+            // PART 3: Multi-Layer Perceptrons & Matrices (Slides 8-10, 60)
+            { id: 11, title: "11. Vector Notation", task: "Inputs and weights are usually vectors. Given `x = [2, 3]` and `w = [1.5, -1]`, calculate the dot product manually: `(2*1.5) + (3*-1)`.", hint: "return (2 * 1.5) + (3 * -1)", thought: "Vector notation simplifies the math. Instead of w1x1 + w2x2... we just write W·X.", challenge: "", code: "def dot_product():\n    pass", test: "assert dot_product() == 0.0\nprint('STATE: {\"Vector_Math\": \"Dot Product\", \"Result\": 0.0}')\nprint('Mission Complete!')" },
+            { id: 12, title: "12. Matrix Notation", task: "In math notation, input matrix is $X$ (N samples, D features). What is the output vector $y$ size? Return 'N labels'.", hint: "return 'N labels'", thought: "This is how we feed thousands of examples (batches) through the network at the same time.", challenge: "", code: "def y_shape():\n    pass", test: "assert y_shape() == 'N labels'\nprint('STATE: {\"Matrix_X\": \"N x D\", \"Vector_y\": \"N x 1\"}')\nprint('Mission Complete!')" },
+            { id: 13, title: "13. Hidden Layers", task: "Between input and output are units we don't observe directly. Return 'hidden units'.", hint: "return 'hidden units'", thought: "These form 'Multi-Layer Perceptrons' (MLPs). The connections can be dense, sparse, or recurrent.", challenge: "", code: "def inner_layers():\n    pass", test: "assert inner_layers() == 'hidden units'\nprint('STATE: {\"Architecture\": \"MLP\", \"Layers\": \"Input -> Hidden -> Output\"}')\nprint('Mission Complete!')" },
+            { id: 14, title: "14. Universal Approximation", task: "In principle, we can approximate any function with a neural network. Return True.", hint: "return True", thought: "There is no limit to how many inputs we can feed, how wide, or how deep the network is.", challenge: "", code: "def universal_theorem():\n    pass", test: "assert universal_theorem() == True\nprint('STATE: {\"Capability\": \"Universal Approximation\", \"Result\": \"Any Function\"}')\nprint('Mission Complete!')" },
+            { id: 15, title: "15. Composite Functions", task: "When we add layers, we composite functions. Return the string 'y = f(f(f(x)))'.", hint: "return 'y = f(f(f(x)))'", thought: "This deep nesting is where 'Deep' Learning gets its name.", challenge: "", code: "def composite_fn():\n    pass", test: "assert composite_fn() == 'y = f(f(f(x)))'\nprint('STATE: {\"Math_Structure\": \"Composite Functions\"}')\nprint('Mission Complete!')" },
+
+            // PART 4: Deep Learning Workflow - Predict & Measure (Slide 15)
+            { id: 16, title: "16. Workflow Step 1: Predict", task: "The first step of the DL workflow is PREDICT. This involves the Model, Parameters, Architecture, and ___. Return 'Tuning'.", hint: "return 'Tuning'", thought: "Before measuring error, we must push data through our chosen architecture to get a prediction.", challenge: "", code: "def step_1_predict():\n    pass", test: "assert step_1_predict() == 'Tuning'\nprint('STATE: {\"Workflow\": \"1. PREDICT\"}')\nprint('Mission Complete!')" },
+            { id: 17, title: "17. The Forward Pass", task: "Write a simple forward pass `predict(x, w, b)` returning `relu((x * w) + b)`. Assume `relu(z) = max(0, z)`.", hint: "return max(0, (x * w) + b)", thought: "This is exactly what the network does in step 1.", challenge: "", code: "def forward_pass(x, w, b):\n    pass", test: "assert forward_pass(2, 2, -5) == 0\nassert forward_pass(2, 2, 1) == 5\nprint('STATE: {\"Forward_Pass\": \"Complete\", \"Prediction_Made\": True}')\nprint('Mission Complete!')" },
+            { id: 18, title: "18. Workflow Step 2: Measure", task: "The second step is MEASURE. We calculate Cost/Loss, Metrics, Performance, and ___. Return 'Evaluation'.", hint: "return 'Evaluation'", thought: "We compare the prediction against the actual target to see how wrong we are.", challenge: "", code: "def step_2_measure():\n    pass", test: "assert step_2_measure() == 'Evaluation'\nprint('STATE: {\"Workflow\": \"2. MEASURE\"}')\nprint('Mission Complete!')" },
+            { id: 19, title: "19. The Loss Function", task: "Return the string 'MSE' (Mean Squared Error), a common loss function for regression.", hint: "return 'MSE'", thought: "For classification, we usually use Cross-Entropy loss.", challenge: "", code: "def regression_loss():\n    pass", test: "assert regression_loss() == 'MSE'\nprint('STATE: {\"Loss_Calculated\": \"MSE\"}')\nprint('Mission Complete!')" },
+
+            // PART 5: Deep Learning Workflow - Feedback & Backprop (Slides 15, 61)
+            { id: 20, title: "20. Workflow Step 3: Feedback", task: "Step 3 involves Optimisation, Regularisation, Gradients, and ___. Return 'Backpropagation'.", hint: "return 'Backpropagation'", thought: "This is the magic of deep learning. Passing the error backwards to see who is to blame.", challenge: "", code: "def step_3_feedback():\n    pass", test: "assert step_3_feedback() == 'Backpropagation'\nprint('STATE: {\"Workflow\": \"3. FEEDBACK\"}')\nprint('Mission Complete!')" },
+            { id: 21, title: "21. Gradients", task: "A gradient is the 'slope of error'. It tells us the ___. Return 'direction'.", hint: "return 'direction'", thought: "If the slope is steep, we are far from the bottom of the valley.", challenge: "", code: "def gradient_meaning():\n    pass", test: "assert gradient_meaning() == 'direction'\nprint('STATE: {\"Gradient\": \"Calculated\", \"Meaning\": \"Direction of Steepest Ascent\"}')\nprint('Mission Complete!')" },
+            { id: 22, title: "22. The Chain Rule", task: "Backprop relies on the Chain Rule from calculus to multiply gradients backwards. Return 'Chain Rule'.", hint: "return 'Chain Rule'", thought: "Calculus is the engine of AI feedback.", challenge: "", code: "def backprop_math():\n    pass", test: "assert backprop_math() == 'Chain Rule'\nprint('STATE: {\"Math_Engine\": \"Chain Rule\"}')\nprint('Mission Complete!')" },
+            { id: 23, title: "23. Workflow Step 4: Adjust", task: "Step 4 is ADJUST. We change Coefficients, Biases, Variance, and ___. Return 'Weights'.", hint: "return 'Weights'", thought: "The final step modifies the network so it will make a better prediction next time.", challenge: "", code: "def step_4_adjust():\n    pass", test: "assert step_4_adjust() == 'Weights'\nprint('STATE: {\"Workflow\": \"4. ADJUST\"}')\nprint('Mission Complete!')" },
+            { id: 24, title: "24. Weight Update Rule", task: "To minimize loss, we step OPPOSITE to the gradient. Write `new_w(w, lr, grad)` returning `w - (lr * grad)`.", hint: "return w - (lr * grad)", thought: "Repeat until bottom of valley. This completes the loop!", challenge: "", code: "def new_w(w, lr, grad):\n    pass", test: "assert new_w(5.0, 0.1, 10.0) == 4.0\nprint('STATE: {\"Weight_Updated\": 4.0}')\nprint('Mission Complete!')" },
+
+            // PART 6: Training Nuances (Slide 62-65)
+            { id: 25, title: "25. N-Fold Cross Validation", task: "CV improves training. Split data into N parts. Train on N-1, Test on 1. Return 'Robust estimate'.", hint: "return 'Robust estimate'", thought: "Gives a much more robust estimate of performance.", challenge: "", code: "def cv_benefit():\n    pass", test: "assert cv_benefit() == 'Robust estimate'\nprint('STATE: {\"Evaluation\": \"N-Fold CV Active\"}')\nprint('Mission Complete!')" },
+            { id: 26, title: "26. Train/Val/Test Split", task: "If we tune parameters on the test set, what happens? Return 'leak information'.", hint: "return 'leak information'", thought: "Validation set is for parameter tuning. Test set is strictly for the final 'grade'.", challenge: "", code: "def test_set_tuning():\n    pass", test: "assert test_set_tuning() == 'leak information'\nprint('STATE: {\"Validation_Set\": \"Used for Tuning\"}')\nprint('Mission Complete!')" },
+            { id: 27, title: "27. Imbalanced Datasets", task: "A pitfall is training on 99% Class A and 1% Class B. In this case, Accuracy is misleading. Return 'F1'.", hint: "return 'F1'", thought: "We must rely on F1, Precision, and Recall when data is imbalanced.", challenge: "", code: "def imbalanced_metric():\n    pass", test: "assert imbalanced_metric() == 'F1'\nprint('STATE: {\"Data_Balance\": \"Imbalanced\", \"Metric_Selected\": \"F1\"}')\nprint('Mission Complete!')" },
+            { id: 28, title: "28. Data Leakage Pitfall", task: "Including the answer in the input (e.g. using 'time of death' to predict 'survival'). Return True if this is bad.", hint: "return True", thought: "Getting good predictions is both an art and a science.", challenge: "", code: "def is_leakage_bad():\n    pass", test: "assert is_leakage_bad() == True\nprint('STATE: {\"Data_Leakage\": \"Avoided\"}')\nprint('Mission Complete!')" },
+            { id: 29, title: "29. Survivorship Bias", task: "Training only on successful examples ignores failures. Return 'Survivorship bias'.", hint: "return 'Survivorship bias'", thought: "The model will fail in the real world because it never learned what failure looks like.", challenge: "", code: "def success_only_bias():\n    pass", test: "assert success_only_bias() == 'Survivorship bias'\nprint('STATE: {\"Bias_Type\": \"Survivorship\"}')\nprint('Mission Complete!')" },
+
+            // PART 7: Architectures & Complex Networks (Slide 11)
+            { id: 30, title: "30. Deep vs Classic", task: "Deep Learning is a subset of ML handling high data complexity. Return True.", hint: "return True", thought: "ML is composed of several algorithms, some very old. DL is an old technique that has taken over the world.", challenge: "", code: "def is_dl_subset():\n    pass", test: "assert is_dl_subset() == True\nprint('STATE: {\"Complexity_Handling\": \"High\"}')\nprint('Mission Complete!')" },
+            { id: 31, title: "31. CNNs (Convolutional)", task: "CNNs (Deep Convolutional Networks) are excellent for grids. What kind of data is a grid of pixels? Return 'Images'.", hint: "return 'Images'", thought: "The 'Cheat Sheet' shows CNNs use convolutions to scan spatial features.", challenge: "", code: "def cnn_data_type():\n    pass", test: "assert cnn_data_type() == 'Images'\nprint('STATE: {\"Architecture\": \"CNN\", \"Data\": \"Images\"}')\nprint('Mission Complete!')" },
+            { id: 32, title: "32. RNNs (Recurrent)", task: "RNNs (Recurrent Neural Networks) have memory cells. They are good for sequences. Return 'Text'.", hint: "return 'Text'", thought: "LSTMs and GRUs are advanced RNNs that remember context over time.", challenge: "", code: "def rnn_data_type():\n    pass", test: "assert rnn_data_type() == 'Text'\nprint('STATE: {\"Architecture\": \"RNN\", \"Data\": \"Sequential\"}')\nprint('Mission Complete!')" },
+            { id: 33, title: "33. GANs", task: "Generative Adversarial Networks. Two networks fight to create fake data. Return 'Generative'.", hint: "return 'Generative'", thought: "One generates, the other discriminates.", challenge: "", code: "def gan_type():\n    pass", test: "assert gan_type() == 'Generative'\nprint('STATE: {\"Architecture\": \"GAN\", \"Type\": \"Generative\"}')\nprint('Mission Complete!')" },
+            { id: 34, title: "34. Deep Pipelines", task: "Deep learning specifies a learned function as a very deep ___. Return 'pipeline'.", hint: "return 'pipeline'", thought: "Data flows through many hidden layers, transforming at each step.", challenge: "", code: "def dl_structure():\n    pass", test: "assert dl_structure() == 'pipeline'\nprint('STATE: {\"Structure\": \"Deep Pipeline\"}')\nprint('Mission Complete!')" },
+            { id: 35, title: "35. The Final Truth", task: "Does ML find causation? Or just statistical correlation? Return 'Correlation'.", hint: "return 'Correlation'", thought: "Ice cream sales correlate with shark attacks. Predicting attacks based on ice cream is mathematically sound but logically wrong.", challenge: "Play with the Neural Network Playground on the right!", code: "def what_ml_finds():\n    pass", test: "assert what_ml_finds() == 'Correlation'\nprint('STATE: {\"Module\": \"MASTERED\", \"Truth\": \"Correlation != Causation\"}')\nprint('Mission 35 Complete! Try the Playground ->')" }
+        ];
+
+        let currentExId = 1;
+        let xp = 0;
+        let completedCount = 0;
+        let failCount = 0;
+        let pyodideReady = false;
+        let pyodideInstance = null;
+        let unlockedExs = new Set([1]);
+        let completedExs = new Set();
+
+        // UI Elements
+        const exList = document.getElementById('exercise-list');
+        const codeEditor = document.getElementById('code-editor');
+        const btnRun = document.getElementById('btn-run');
+        const termOut = document.getElementById('terminal-output');
+        const loader = document.getElementById('loader');
+        const xpDisplay = document.getElementById('xp-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+        const xpFill = document.getElementById('xp-fill');
+        const memoryBlock = document.getElementById('memory-block');
+        const conceptText = document.getElementById('concept-text');
+
+        // DL Playground Elements
+        const canvas = document.getElementById('dl-canvas');
+        const ctx = canvas.getContext('2d');
+        const btnPlay = document.getElementById('pg-play');
+        const btnResetPG = document.getElementById('pg-reset');
+        const selAct = document.getElementById('pg-activation');
+        const lblEpoch = document.getElementById('pg-epoch');
+
+        // Initialize App
+        async function init() {
+            renderExercises();
+            loadExercise(1);
+            initPlayground();
+
+            try {
+                pyodideInstance = await loadPyodide();
+                await pyodideInstance.runPythonAsync(`
+import sys
+import io
+class CaptureStdout(list):
+    def __enter__(self):
+        self._stdout = sys.stdout
+        sys.stdout = self._stringio = io.StringIO()
+        return self
+    def __exit__(self, *args):
+        self.extend(self._stringio.getvalue().splitlines())
+        del self._stringio
+        sys.stdout = self._stdout
+                `);
+                pyodideReady = true;
+                btnRun.disabled = false;
+                btnRun.innerText = "Run Code (Shift+Enter)";
+                loader.style.display = "none";
+                termOut.innerText = "Python Environment Ready.\nSelect an exercise and write your code.";
+            } catch (err) {
+                termOut.innerText = "Error loading Python environment: " + err;
+                termOut.className = "term-error";
+            }
+        }
+
+        function renderExercises() {
+            exList.innerHTML = '';
+            exercises.forEach(ex => {
+                const div = document.createElement('div');
+                let classes = ['exercise-item'];
+                if (unlockedExs.has(ex.id)) classes.push('unlocked');
+                if (completedExs.has(ex.id)) classes.push('completed');
+                if (ex.id === currentExId) classes.push('active');
+                
+                div.className = classes.join(' ');
+                div.id = `ex-${ex.id}`;
+                div.onclick = () => { 
+                    if(unlockedExs.has(ex.id) || completedExs.has(ex.id)) loadExercise(ex.id); 
+                };
+                
+                let inner = `<strong>${ex.title}</strong>`;
+                inner += `<div class="ex-details">
+                    <p style="margin-bottom: 8px;">${ex.task}</p>
+                    <button class="hint-btn" onclick="toggleHint(event, ${ex.id})">Show Hint</button>
+                    <p class="hint-text" id="hint-${ex.id}">Hint: ${ex.hint}</p>
+                    <div class="food-for-thought">💭 <b>Food for Thought:</b> ${ex.thought}</div>
+                    ${ex.challenge ? `<div class="challenge">🔥 <b>Challenge:</b> ${ex.challenge}</div>` : ''}
+                </div>`;
+                div.innerHTML = inner;
+                exList.appendChild(div);
+            });
+        }
+
+        function toggleHint(e, id) {
+            e.stopPropagation();
+            const hint = document.getElementById(`hint-${id}`);
+            hint.style.display = hint.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function loadExercise(id) {
+            currentExId = id;
+            failCount = 0;
+            renderExercises();
+            
+            const ex = exercises.find(e => e.id === id);
+            codeEditor.value = ex.code;
+            termOut.innerText = `Loaded ${ex.title}... waiting for execution.`;
+            termOut.className = '';
+            
+            conceptText.innerHTML = `<strong>Current Concept:</strong><br>${ex.title}<br><br>As you write code, watch this panel to see how your logic affects the internal state of the Deep Learning model.`;
+            memoryBlock.innerText = "// Awaiting function execution...";
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            btnRun.disabled = true;
+            termOut.innerText = "Running...";
+            termOut.className = "";
+
+            const ex = exercises.find(e => e.id === currentExId);
+            const userCode = codeEditor.value;
+            const testCode = ex.test;
+
+            const pythonScript = `
+with CaptureStdout() as output:
+    try:
+${userCode.split('\n').map(line => '        ' + line).join('\n')}
+${testCode.split('\n').map(line => '        ' + line).join('\n')}
+    except AssertionError:
+        print("TEST_FAILED: Output did not match expected result. Check your logic.")
+    except Exception as e:
+        print(f"ERROR: {e}")
+output
+`;
+
+            try {
+                let result = await pyodideInstance.runPythonAsync(pythonScript);
+                let outList = result.toJs();
+                
+                let displayOut = "";
+                let passed = false;
+                let stateData = null;
+
+                outList.forEach(line => {
+                    if (line.includes("TEST_FAILED") || line.includes("ERROR")) {
+                        displayOut += "❌ " + line + "\n";
+                    } else if (line.startsWith("STATE:")) {
+                        stateData = line.replace("STATE:", "").trim();
+                    } else {
+                        displayOut += line + "\n";
+                        if (line.includes("Complete")) passed = true;
+                    }
+                });
+
+                if (passed) {
+                    termOut.innerText = "✅ Tests Passed!\n" + displayOut;
+                    termOut.className = "term-success";
+                    handleSuccess(stateData);
+                } else {
+                    failCount++;
+                    let skipMessage = "";
+                    if (failCount >= 3 && currentExId < 35) {
+                        let nextId = currentExId + 1;
+                        if (!unlockedExs.has(nextId)) {
+                            unlockedExs.add(nextId);
+                            skipMessage = "\n\n💡 Stuck? The next exercise is unlocked. You can skip this and come back later!";
+                            renderExercises(); 
+                        }
+                    }
+                    termOut.innerText = "Execution Output:\n" + displayOut + skipMessage;
+                    termOut.className = "term-error";
+                    if (skipMessage) termOut.classList.add("term-warning"); 
+                }
+
+            } catch (err) {
+                termOut.innerText = "Syntax Error:\n" + err;
+                termOut.className = "term-error";
+            }
+            btnRun.disabled = false;
+        }
+
+        function handleSuccess(stateData) {
+            if (stateData) {
+                try {
+                    let formattedObj = JSON.stringify(JSON.parse(stateData), null, 2);
+                    memoryBlock.innerText = `MODEL_STATE = ${formattedObj}`;
+                    memoryBlock.style.backgroundColor = "rgba(155, 39, 176, 0.2)";
+                    setTimeout(() => memoryBlock.style.backgroundColor = "#11111b", 500);
+                } catch(e) { memoryBlock.innerText = stateData; }
+            }
+
+            if (!completedExs.has(currentExId)) {
+                completedExs.add(currentExId);
+                completedCount++;
+                scoreDisplay.innerText = completedCount;
+                xp += 100;
+                updateGamification();
+                
+                if (currentExId < 35) {
+                    let nextId = currentExId + 1;
+                    unlockedExs.add(nextId);
+                    renderExercises(); 
+                    const nextDiv = document.getElementById(`ex-${nextId}`);
+                    if(nextDiv) nextDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    renderExercises(); 
+                }
+            }
+        }
+
+        function updateGamification() {
+            xpDisplay.innerText = xp;
+            levelDisplay.innerText = Math.floor(xp / 500) + 1;
+            xpFill.style.width = `${((xp % 500) / 500) * 100}%`;
+        }
+
+        function resetApp() {
+            if(confirm("Reset all progress?")) location.reload();
+        }
+
+        btnRun.addEventListener('click', runCode);
+        codeEditor.addEventListener('keydown', function(e) {
+            if (e.key == 'Tab') {
+                e.preventDefault();
+                let start = this.selectionStart; let end = this.selectionEnd;
+                this.value = this.value.substring(0, start) + "    " + this.value.substring(end);
+                this.selectionStart = this.selectionEnd = start + 4;
+            }
+            if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); btnRun.click(); }
+        });
+
+        // ---------------------------------------------------------
+        // DEEP LEARNING PLAYGROUND LOGIC (Custom JS Neural Network)
+        // ---------------------------------------------------------
+        
+        let pgInterval;
+        let isTraining = false;
+        let epoch = 0;
+
+        // XOR Data
+        const data = [
+            { x: [-1, -1], y: -1 }, { x: [ 1,  1], y: -1 },
+            { x: [-1,  1], y:  1 }, { x: [ 1, -1], y:  1 }
+        ];
+
+        // Simple MLP: 2 Inputs -> 4 Hidden -> 1 Output
+        let W1, B1, W2, B2;
+        
+        function initPlayground() {
+            epoch = 0;
+            lblEpoch.innerText = epoch;
+            // Initialize weights randomly
+            W1 = [[Math.random()-0.5, Math.random()-0.5], [Math.random()-0.5, Math.random()-0.5], [Math.random()-0.5, Math.random()-0.5], [Math.random()-0.5, Math.random()-0.5]];
+            B1 = [Math.random()-0.5, Math.random()-0.5, Math.random()-0.5, Math.random()-0.5];
+            W2 = [Math.random()-0.5, Math.random()-0.5, Math.random()-0.5, Math.random()-0.5];
+            B2 = Math.random()-0.5;
+            drawPlayground();
+            if(isTraining) { clearInterval(pgInterval); isTraining = false; btnPlay.innerText = "Train"; }
+        }
+
+        function activate(x, type) {
+            if(type === 'relu') return Math.max(0, x);
+            if(type === 'tanh') return Math.tanh(x);
+            if(type === 'sigmoid') return 1 / (1 + Math.exp(-x));
+            return x;
+        }
+
+        function d_activate(x, type) {
+            if(type === 'relu') return x > 0 ? 1 : 0;
+            if(type === 'tanh') return 1 - Math.pow(Math.tanh(x), 2);
+            if(type === 'sigmoid') { let s = 1 / (1 + Math.exp(-x)); return s * (1 - s); }
+            return 1;
+        }
+
+        function trainStep() {
+            let lr = 0.1;
+            let actType = selAct.value;
+            
+            for(let i=0; i<data.length; i++) {
+                let x1 = data[i].x[0], x2 = data[i].x[1], y_true = data[i].y;
+                
+                // Forward
+                let z1 = [
+                    W1[0][0]*x1 + W1[0][1]*x2 + B1[0],
+                    W1[1][0]*x1 + W1[1][1]*x2 + B1[1],
+                    W1[2][0]*x1 + W1[2][1]*x2 + B1[2],
+                    W1[3][0]*x1 + W1[3][1]*x2 + B1[3]
+                ];
+                let a1 = [activate(z1[0], actType), activate(z1[1], actType), activate(z1[2], actType), activate(z1[3], actType)];
+                
+                let z2 = W2[0]*a1[0] + W2[1]*a1[1] + W2[2]*a1[2] + W2[3]*a1[3] + B2;
+                let y_pred = Math.tanh(z2); // Output mapped to -1, 1
+                
+                // Backprop (simplified MSE for tanh output)
+                let error = y_pred - y_true;
+                let d_z2 = error * (1 - Math.pow(Math.tanh(z2), 2));
+                
+                let d_W2 = [d_z2*a1[0], d_z2*a1[1], d_z2*a1[2], d_z2*a1[3]];
+                let d_B2 = d_z2;
+                
+                let d_a1 = [d_z2*W2[0], d_z2*W2[1], d_z2*W2[2], d_z2*W2[3]];
+                let d_z1 = [d_a1[0]*d_activate(z1[0], actType), d_a1[1]*d_activate(z1[1], actType), d_a1[2]*d_activate(z1[2], actType), d_a1[3]*d_activate(z1[3], actType)];
+                
+                // Update
+                W2[0] -= lr * d_W2[0]; W2[1] -= lr * d_W2[1]; W2[2] -= lr * d_W2[2]; W2[3] -= lr * d_W2[3]; B2 -= lr * d_B2;
+                for(let j=0; j<4; j++) {
+                    W1[j][0] -= lr * d_z1[j] * x1;
+                    W1[j][1] -= lr * d_z1[j] * x2;
+                    B1[j] -= lr * d_z1[j];
+                }
+            }
+            epoch++;
+            lblEpoch.innerText = epoch;
+            if(epoch % 5 === 0) drawPlayground();
+        }
+
+        function predict(x1, x2) {
+            let actType = selAct.value;
+            let a1 = [
+                activate(W1[0][0]*x1 + W1[0][1]*x2 + B1[0], actType),
+                activate(W1[1][0]*x1 + W1[1][1]*x2 + B1[1], actType),
+                activate(W1[2][0]*x1 + W1[2][1]*x2 + B1[2], actType),
+                activate(W1[3][0]*x1 + W1[3][1]*x2 + B1[3], actType)
+            ];
+            return Math.tanh(W2[0]*a1[0] + W2[1]*a1[1] + W2[2]*a1[2] + W2[3]*a1[3] + B2);
+        }
+
+        function drawPlayground() {
+            let w = canvas.width; let h = canvas.height;
+            let imgData = ctx.createImageData(w, h);
+            
+            // Draw Decision Boundary
+            for(let px=0; px<w; px++) {
+                for(let py=0; py<h; py++) {
+                    // Map pixel to -2, 2 domain
+                    let x1 = (px/w)*4 - 2;
+                    let x2 = (py/h)*4 - 2;
+                    let p = predict(x1, x2);
+                    
+                    let idx = (py*w + px) * 4;
+                    // Color mapping: Purple to Orange
+                    if (p > 0) { imgData.data[idx]=155; imgData.data[idx+1]=39; imgData.data[idx+2]=176; imgData.data[idx+3]=Math.abs(p)*255; } 
+                    else { imgData.data[idx]=255; imgData.data[idx+1]=152; imgData.data[idx+2]=0; imgData.data[idx+3]=Math.abs(p)*255; }
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+
+            // Draw Data Points
+            data.forEach(pt => {
+                let px = (pt.x[0] + 2)/4 * w;
+                let py = (pt.x[1] + 2)/4 * h;
+                ctx.beginPath();
+                ctx.arc(px, py, 6, 0, 2*Math.PI);
+                ctx.fillStyle = pt.y > 0 ? '#9b27b0' : '#ff9800'; // Target colors
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#fff';
+                ctx.stroke();
+            });
+        }
+
+        btnPlay.addEventListener('click', () => {
+            if(isTraining) { clearInterval(pgInterval); isTraining = false; btnPlay.innerText = "Train"; } 
+            else { pgInterval = setInterval(trainStep, 20); isTraining = true; btnPlay.innerText = "Pause"; }
+        });
+
+        btnResetPG.addEventListener('click', initPlayground);
+        selAct.addEventListener('change', initPlayground);
+
+        // Start App
+        init();
+
+    </script>
+</body>
+</html>
