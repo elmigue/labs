@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Live Collaborative Canvas · GitHub Pages</title>
+
+  <style>
+    :root {
+      --bg-canvas: #090d16;
+      --grid-dot: #1e293b;
+      --surface: #0f172a;
+      --surface-card: #1e293b;
+      --surface-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --green: #10b981;
+      --danger: #ef4444;
+      --amber: #f59e0b;
+      --radius: 12px;
+      --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+      --shadow-drag: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, monospace;
+    }
+
+    /* Note Color Themes */
+    .theme-yellow { --card-bg: #fef08a; --card-text: #713f12; --card-accent: #eab308; --card-border: #fde047; }
+    .theme-blue   { --card-bg: #bae6fd; --card-text: #0c4a6e; --card-accent: #0284c7; --card-border: #7dd3fc; }
+    .theme-green  { --card-bg: #bbf7d0; --card-text: #14532d; --card-accent: #16a34a; --card-border: #86efac; }
+    .theme-pink   { --card-bg: #fbcfe8; --card-text: #831843; --card-accent: #db2777; --card-border: #f472b6; }
+    .theme-purple { --card-bg: #e9d5ff; --card-text: #581c87; --card-accent: #9333ea; --card-border: #d8b4fe; }
+    .theme-dark   { --card-bg: #1e293b; --card-text: #f8fafc; --card-accent: #60a5fa; --card-border: #475569; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: var(--font-sans); background: var(--bg-canvas); color: var(--text-main);
+    }
+
+    /* ── Top Bar ── */
+    header.app-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: 60px;
+      background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--surface-border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 9999; gap: 10px;
+    }
+    .brand-section { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .board-title {
+      font-size: 15px; font-weight: 700; color: #fff; background: transparent;
+      border: 1px solid transparent; border-radius: 6px; padding: 4px 8px;
+      outline: none; max-width: 180px; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .board-title:focus { background: var(--surface-card); border-color: var(--surface-border); }
+
+    /* Live Room Status Badge */
+    .room-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(30, 41, 59, 0.8); border: 1px solid var(--surface-border);
+      padding: 4px 10px; border-radius: 20px; font-size: 11.5px; font-family: var(--font-mono);
+      cursor: pointer; user-select: none;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--amber);
+      transition: background 0.3s;
+    }
+    .status-dot.connected {
+      background: var(--green); box-shadow: 0 0 8px var(--green);
+    }
+
+    .nav-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* Identity Pill */
+    .identity-pill {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface-card); border: 1px solid var(--surface-border);
+      padding: 4px 10px; border-radius: 30px; font-size: 12.5px; cursor: pointer;
+      user-select: none;
+    }
+    .avatar-circle {
+      width: 24px; height: 24px; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-size: 11px;
+      font-weight: 700; color: #fff; background: #64748b;
+    }
+
+    .btn {
+      background: var(--surface-card); border: 1px solid var(--surface-border);
+      color: var(--text-main); font-size: 12.5px; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+      user-select: none; transition: all 0.15s;
+    }
+    .btn:hover { background: #334155; border-color: #64748b; }
+    .btn.primary { background: var(--primary); border-color: #60a5fa; color: #fff; }
+    .btn.primary:hover { background: var(--primary-hover); }
+
+    /* ── Canvas Viewport ── */
+    .canvas-viewport {
+      width: 100vw; height: 100vh; position: absolute; top: 0; left: 0;
+      overflow: hidden; cursor: grab;
+      background-image: radial-gradient(var(--grid-dot) 1.5px, transparent 1.5px);
+      background-size: 32px 32px;
+    }
+    .canvas-viewport.panning { cursor: grabbing; }
+
+    .canvas-world {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; transform-origin: 0 0;
+      pointer-events: none;
+    }
+
+    /* ── Sticky Note Card ── */
+    .note-card {
+      position: absolute; width: 280px; min-height: 160px;
+      background: var(--card-bg); color: var(--card-text);
+      border-radius: var(--radius); border: 1px solid var(--card-border);
+      box-shadow: var(--shadow-card); padding: 16px;
+      pointer-events: auto; cursor: default;
+      display: flex; flex-direction: column; gap: 10px;
+      transform-origin: center center;
+      transition: box-shadow 0.2s, transform 0.1s;
+      user-select: text !important;
+      z-index: 10;
+    }
+    .note-card.dragging {
+      box-shadow: var(--shadow-drag); cursor: grabbing; z-index: 9999;
+      transform: scale(1.02) rotate(1deg); opacity: 0.95;
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: grab; padding-bottom: 4px; user-select: none;
+    }
+    .card-header .author-tag {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;
+      opacity: 0.85;
+    }
+    .card-header .author-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+    }
+    .btn-icon {
+      background: transparent; border: none; color: inherit; cursor: pointer;
+      opacity: 0.6; border-radius: 4px; padding: 2px 4px; font-size: 14px;
+    }
+    .btn-icon:hover { opacity: 1; background: rgba(0, 0, 0, 0.08); }
+
+    .card-title {
+      font-size: 16px; font-weight: 700; line-height: 1.3;
+      outline: none; word-break: break-word; user-select: text !important;
+      min-height: 22px;
+    }
+    .card-title:empty:before { content: "Note Title..."; opacity: 0.45; }
+
+    .card-body {
+      font-size: 13.5px; line-height: 1.5; outline: none;
+      word-break: break-word; min-height: 60px; flex: 1; user-select: text !important;
+    }
+    .card-body:empty:before { content: "Type your thoughts, ideas, or links..."; opacity: 0.45; }
+
+    .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 8px; border-top: 1px solid rgba(0, 0, 0, 0.08);
+      font-size: 12px; user-select: none;
+    }
+    .like-btn {
+      background: rgba(0, 0, 0, 0.05); border: none; border-radius: 20px;
+      padding: 3px 8px; font-size: 11.5px; font-weight: 600; color: inherit;
+      cursor: pointer; display: flex; align-items: center; gap: 4px;
+    }
+    .like-btn.liked { color: var(--danger); background: rgba(239, 68, 68, 0.15); }
+
+    .palette-row { display: flex; gap: 4px; align-items: center; }
+    .color-dot {
+      width: 14px; height: 14px; border-radius: 50%; cursor: pointer;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+    }
+    .color-dot:hover { transform: scale(1.25); }
+
+    /* ── Floating Controls ── */
+    .hud-controls {
+      position: fixed; bottom: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 10px; z-index: 1000;
+    }
+    .fab-add {
+      width: 54px; height: 54px; border-radius: 50%;
+      background: var(--primary); color: #fff; border: 2px solid #60a5fa;
+      box-shadow: 0 10px 25px rgba(59, 130, 246, 0.5); font-size: 26px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; user-select: none; transition: transform 0.2s;
+    }
+    .fab-add:hover { transform: scale(1.08) rotate(90deg); }
+
+    .zoom-toolbar {
+      position: fixed; bottom: 24px; left: 24px;
+      background: var(--surface); border: 1px solid var(--surface-border);
+      border-radius: 30px; padding: 4px 10px; display: flex; align-items: center;
+      gap: 8px; box-shadow: var(--shadow-card); z-index: 1000; user-select: none;
+    }
+    .zoom-btn {
+      background: none; border: none; color: var(--text-main); font-size: 16px;
+      width: 26px; height: 26px; cursor: pointer; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .zoom-val { font-size: 11px; font-family: var(--font-mono); min-width: 44px; text-align: center; }
+
+    /* ── Modals ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px); display: none; align-items: center;
+      justify-content: center; z-index: 10000;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+      background: var(--surface); border: 1px solid var(--surface-border);
+      width: 90%; max-width: 440px; border-radius: 16px; padding: 24px;
+      box-shadow: var(--shadow-drag); display: flex; flex-direction: column; gap: 16px;
+    }
+    .modal-header { font-size: 17px; font-weight: 700; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+    .form-input {
+      background: #090d16; border: 1px solid var(--surface-border); border-radius: 8px;
+      padding: 10px; color: #fff; font-size: 14px; outline: none;
+    }
+    .form-input:focus { border-color: var(--primary); }
+
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+    .switch { position: relative; width: 44px; height: 24px; display: inline-block; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0; background-color: #334155;
+      transition: .3s; border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background-color: white; transition: .3s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    .toast-msg {
+      position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95); border: 1px solid var(--primary);
+      padding: 8px 18px; border-radius: 20px; font-size: 12.5px; font-weight: 600;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.5); z-index: 12000;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .toast-msg.show { opacity: 1; }
+
+    .qr-box {
+      background: #fff; padding: 14px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 8px auto; width: 190px; height: 190px;
+    }
+    .qr-box img { width: 160px; height: 160px; display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-bar">
+    <div class="brand-section">
+      <span style="font-size:20px;">📌</span>
+      <input type="text" class="board-title" id="boardTitle" value="Live Class Board" title="Click to rename board">
+      
+      <div class="room-badge" id="btnChangeRoom" title="Click to switch or rename room">
+        <span class="status-dot" id="syncDot"></span>
+        <span id="roomLabel">room: initializing</span>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <!-- Identity Switcher -->
+      <div class="identity-pill" id="identityTrigger" title="Switch between Anonymous and Name">
+        <div class="avatar-circle" id="userAvatar">👤</div>
+        <span id="userNameDisplay">Anonymous</span>
+      </div>
+
+      <button class="btn" id="btnInvite" title="Scan QR Code or copy link for phone/laptop">📱 Live Invite</button>
+      <button class="btn" id="btnOrganize" title="Snap cards into neat rows">Auto-Grid</button>
+      <button class="btn primary" id="btnNewNote">+ Note</button>
+    </div>
+  </header>
+
+  <!-- Infinite Canvas -->
+  <main class="canvas-viewport" id="viewport">
+    <div class="canvas-world" id="world"></div>
+  </main>
+
+  <!-- Zoom Floating HUD -->
+  <div class="zoom-toolbar">
+    <button class="zoom-btn" id="zoomOut">−</button>
+    <span class="zoom-val" id="zoomDisplay">100%</span>
+    <button class="zoom-btn" id="zoomIn">+</button>
+    <button class="zoom-btn" id="zoomReset">↺</button>
+  </div>
+
+  <div class="hud-controls">
+    <button class="fab-add" id="fabAdd" title="Create note at center">+</button>
+  </div>
+
+  <!-- Modal: Identity Switcher -->
+  <div class="modal-overlay" id="identityModal">
+    <div class="modal-card">
+      <div class="modal-header">Posting Identity</div>
+      <div class="toggle-row">
+        <span>Post Anonymously</span>
+        <label class="switch">
+          <input type="checkbox" id="anonToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="form-group" id="nameGroup" style="display:none;">
+        <label>Display Name</label>
+        <input type="text" class="form-input" id="nameInput" placeholder="e.g. Alice, Dr. Canziani">
+      </div>
+      <div class="form-group">
+        <label>Avatar Color</label>
+        <div class="palette-row" style="margin-top:4px;">
+          <div class="color-dot" style="background:#3b82f6" data-color="#3b82f6"></div>
+          <div class="color-dot" style="background:#10b981" data-color="#10b981"></div>
+          <div class="color-dot" style="background:#f59e0b" data-color="#f59e0b"></div>
+          <div class="color-dot" style="background:#ec4899" data-color="#ec4899"></div>
+          <div class="color-dot" style="background:#8b5cf6" data-color="#8b5cf6"></div>
+          <div class="color-dot" style="background:#64748b" data-color="#64748b"></div>
+        </div>
+      </div>
+      <button class="btn primary" style="justify-content:center;" id="saveIdentity">Done</button>
+    </div>
+  </div>
+
+  <!-- Modal: Live QR & Multi-Device Invite -->
+  <div class="modal-overlay" id="inviteModal">
+    <div class="modal-card">
+      <div class="modal-header">Connect Other Laptops &amp; Phones</div>
+      <p style="font-size:12.5px; color:var(--text-muted); line-height:1.5;">
+        Scan this QR code with your phone camera or copy the link below. Any device opening it connects to this live room.
+      </p>
+      
+      <div class="qr-box">
+        <img id="qrImg" src="" alt="Scan QR Code to join board">
+      </div>
+      
+      <div style="font-size:11.5px; font-family:var(--font-mono); text-align:center; color:#38bdf8; word-break:break-all;" id="inviteUrlText"></div>
+
+      <button class="btn primary" id="btnCopyInviteLink" style="justify-content:center;">📋 Copy Live Link</button>
+      <button class="btn" id="closeInvite" style="justify-content:center;">Close</button>
+    </div>
+  </div>
+
+  <!-- Modal: Room Name Selector -->
+  <div class="modal-overlay" id="roomModal">
+    <div class="modal-card">
+      <div class="modal-header">Switch Live Room</div>
+      <div class="form-group">
+        <label>Room Identifier</label>
+        <input type="text" class="form-input" id="roomInput" placeholder="e.g. cs101-board, ethics-unit1">
+      </div>
+      <p style="font-size:12px; color:var(--text-muted);">
+        Devices using the same room identifier automatically synchronize in real time.
+      </p>
+      <button class="btn primary" id="btnJoinRoom" style="justify-content:center;">Join Room</button>
+      <button class="btn" id="closeRoomModal" style="justify-content:center;">Cancel</button>
+    </div>
+  </div>
+
+  <div class="toast-msg" id="toast">Synced</div>
+
+  <!-- ── Main Application Logic ── -->
+  <script>
+    // ── Global Config & Constants ──
+    const STORAGE_KEY_PREFIX = 'padlet_live_room_v3_';
+    const IDENTITY_KEY = 'padlet_user_identity_v3';
+    const colorThemes = ['yellow', 'blue', 'green', 'pink', 'purple', 'dark'];
+
+    // ── Room Resolver (Immediate Execution) ──
+    function getRoomFromUrl() {
+      try {
+        const match = window.location.hash.match(/room=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      } catch (e) {}
+
+      let saved = 'class-' + Math.floor(100 + Math.random() * 900);
+      try {
+        window.location.hash = `room=${saved}`;
+      } catch (e) {}
+      return saved;
+    }
+
+    const currentRoom = getRoomFromUrl();
+
+    // ── Update Room Label Immediately ──
+    const roomLabel = document.getElementById('roomLabel');
+    if (roomLabel) {
+      roomLabel.textContent = `room: ${currentRoom}`;
+    }
+
+    // ── Defensive Sanitizers (Guarantees no missing properties can crash JS) ──
+    function sanitizeNote(n) {
+      if (!n || typeof n !== 'object') n = {};
+      return {
+        id: typeof n.id === 'string' ? n.id : ('note_' + Math.random().toString(36).substr(2, 9)),
+        x: typeof n.x === 'number' && !isNaN(n.x) ? n.x : 140,
+        y: typeof n.y === 'number' && !isNaN(n.y) ? n.y : 140,
+        title: typeof n.title === 'string' ? n.title : "",
+        body: typeof n.body === 'string' ? n.body : "",
+        theme: colorThemes.includes(n.theme) ? n.theme : 'yellow',
+        author: {
+          name: (n.author && typeof n.author.name === 'string') ? n.author.name : "Anonymous",
+          isAnon: n.author ? Boolean(n.author.isAnon) : true,
+          color: (n.author && typeof n.author.color === 'string') ? n.author.color : "#64748b"
+        },
+        likes: typeof n.likes === 'number' ? n.likes : 0,
+        createdAt: n.createdAt || Date.now(),
+        updatedAt: n.updatedAt || Date.now()
+      };
+    }
+
+    function sanitizeState(raw) {
+      if (!raw || typeof raw !== 'object') raw = {};
+      return {
+        title: typeof raw.title === 'string' ? raw.title : "Live Class Board",
+        pan: {
+          x: (raw.pan && typeof raw.pan.x === 'number' && !isNaN(raw.pan.x)) ? raw.pan.x : 0,
+          y: (raw.pan && typeof raw.pan.y === 'number' && !isNaN(raw.pan.y)) ? raw.pan.y : 0
+        },
+        zoom: (typeof raw.zoom === 'number' && !isNaN(raw.zoom) && raw.zoom >= 0.2) ? raw.zoom : 1.0,
+        notes: Array.isArray(raw.notes) ? raw.notes.map(sanitizeNote) : []
+      };
+    }
+
+    let state = sanitizeState({});
+
+    let currentUser = {
+      isAnonymous: true,
+      name: "Anonymous",
+      color: "#64748b",
+      clientId: 'usr_' + Math.random().toString(36).substr(2, 7)
+    };
+
+    // ── DOM References ──
+    const viewport = document.getElementById('viewport');
+    const world = document.getElementById('world');
+    const boardTitle = document.getElementById('boardTitle');
+    const zoomDisplay = document.getElementById('zoomDisplay');
+    const toast = document.getElementById('toast');
+    const syncDot = document.getElementById('syncDot');
+
+    const identityModal = document.getElementById('identityModal');
+    const inviteModal = document.getElementById('inviteModal');
+    const roomModal = document.getElementById('roomModal');
+    const anonToggle = document.getElementById('anonToggle');
+    const nameGroup = document.getElementById('nameGroup');
+    const nameInput = document.getElementById('nameInput');
+    const userAvatar = document.getElementById('userAvatar');
+    const userNameDisplay = document.getElementById('userNameDisplay');
+
+    function showToast(msg) {
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    // ── Real-Time Sync Channel (Native SSE + Fetch) ──
+    let eventSource = null;
+    const SYNC_RELAY_URL = 'https://ntfy.sh/';
+    const cleanTopic = `els_padlet_${currentRoom.toLowerCase().replace(/[^a-z0-9_-]/g, '')}`;
+
+    function initNativeSync() {
+      try {
+        if (eventSource) {
+          eventSource.close();
+        }
+
+        eventSource = new EventSource(`${SYNC_RELAY_URL}${cleanTopic}/sse`);
+
+        eventSource.onopen = () => {
+          if (syncDot) syncDot.classList.add('connected');
+          broadcastMessage({ type: 'REQ_SYNC' });
+        };
+
+        eventSource.onerror = () => {
+          if (syncDot) syncDot.classList.remove('connected');
+        };
+
+        eventSource.onmessage = (event) => {
+          try {
+            const raw = JSON.parse(event.data);
+            if (!raw || !raw.message) return;
+            const packet = JSON.parse(raw.message);
+            if (packet.senderId === currentUser.clientId) return;
+            handleIncomingPacket(packet);
+          } catch (e) {}
+        };
+      } catch (err) {
+        console.warn("Real-time network unavailable; running locally.", err);
+      }
+    }
+
+    function broadcastMessage(packet) {
+      packet.senderId = currentUser.clientId;
+      packet.timestamp = Date.now();
+
+      try {
+        fetch(`${SYNC_RELAY_URL}${cleanTopic}`, {
+          method: 'POST',
+          body: JSON.stringify(packet),
+          headers: { 'Content-Type': 'text/plain' }
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
+    function handleIncomingPacket(pkt) {
+      if (!pkt || typeof pkt !== 'object') return;
+
+      if (pkt.type === 'REQ_SYNC') {
+        if (state.notes.length > 0) {
+          broadcastMessage({
+            type: 'FULL_SYNC',
+            state: { title: state.title, notes: state.notes }
+          });
+        }
+      } else if (pkt.type === 'FULL_SYNC') {
+        if (pkt.state && Array.isArray(pkt.state.notes)) {
+          if (state.notes.length === 0 || pkt.state.notes.length >= state.notes.length) {
+            state.notes = pkt.state.notes.map(sanitizeNote);
+            if (typeof pkt.state.title === 'string') {
+              state.title = pkt.state.title;
+              if (boardTitle) boardTitle.value = state.title;
+            }
+            renderAllNotes();
+            saveLocal();
+            showToast("Board synchronized with room!");
+          }
+        }
+      } else if (pkt.type === 'NOTE_UPSERT' && pkt.note) {
+        const sanitized = sanitizeNote(pkt.note);
+        const idx = state.notes.findIndex(n => n.id === sanitized.id);
+        if (idx >= 0) {
+          state.notes[idx] = sanitized;
+        } else {
+          state.notes.push(sanitized);
+        }
+        renderAllNotes();
+        saveLocal();
+      } else if (pkt.type === 'NOTE_DELETE' && pkt.noteId) {
+        state.notes = state.notes.filter(n => n.id !== pkt.noteId);
+        const el = document.getElementById(pkt.noteId);
+        if (el) el.remove();
+        saveLocal();
+      } else if (pkt.type === 'BOARD_TITLE' && typeof pkt.title === 'string') {
+        state.title = pkt.title;
+        if (boardTitle) boardTitle.value = state.title;
+        saveLocal();
+      }
+    }
+
+    // ── Local Storage Management ──
+    function saveLocal() {
+      try {
+        localStorage.setItem(STORAGE_KEY_PREFIX + currentRoom, JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    function loadLocal() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY_PREFIX + currentRoom);
+        if (stored) {
+          state = sanitizeState(JSON.parse(stored));
+        }
+      } catch (e) {}
+
+      if (!state.notes || state.notes.length === 0) {
+        state.notes = [
+          sanitizeNote({
+            id: 'note_welcome',
+            x: 180, y: 140,
+            title: "Live Synced Board ⚡",
+            body: "Open this link on your phone or another laptop — changes appear instantly across screens.",
+            theme: "yellow",
+            author: { name: "Moderator", isAnon: false, color: "#3b82f6" },
+            likes: 2
+          }),
+          sanitizeNote({
+            id: 'note_identity',
+            x: 520, y: 140,
+            title: "Anonymous or Named 👤",
+            body: "Toggle your identity on the top right. Mobile participants can post anonymously without creating an account.",
+            theme: "green",
+            author: { name: "Anonymous", isAnon: true, color: "#64748b" },
+            likes: 1
+          })
+        ];
+      }
+    }
+
+    // ── Identity System ──
+    function loadIdentity() {
+      try {
+        const stored = localStorage.getItem(IDENTITY_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && typeof parsed === 'object') {
+            currentUser.isAnonymous = Boolean(parsed.isAnonymous);
+            currentUser.name = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : "Anonymous";
+            currentUser.color = typeof parsed.color === 'string' ? parsed.color : "#64748b";
+          }
+        }
+      } catch (e) {}
+      updateIdentityUI();
+    }
+
+    function updateIdentityUI() {
+      if (userNameDisplay) userNameDisplay.textContent = currentUser.isAnonymous ? "Anonymous" : currentUser.name;
+      if (userAvatar) {
+        userAvatar.style.backgroundColor = currentUser.color;
+        const initial = (currentUser.name || "A").charAt(0).toUpperCase();
+        userAvatar.textContent = currentUser.isAnonymous ? "👤" : (initial || "A");
+      }
+      if (anonToggle) anonToggle.checked = currentUser.isAnonymous;
+      if (nameInput) nameInput.value = currentUser.isAnonymous ? "" : currentUser.name;
+      if (nameGroup) nameGroup.style.display = currentUser.isAnonymous ? 'none' : 'flex';
+    }
+
+    if (anonToggle) {
+      anonToggle.addEventListener('change', () => {
+        if (nameGroup) nameGroup.style.display = anonToggle.checked ? 'none' : 'flex';
+      });
+    }
+
+    document.querySelectorAll('.palette-row .color-dot').forEach(dot => {
+      dot.addEventListener('click', (e) => {
+        currentUser.color = e.target.dataset.color || "#3b82f6";
+        if (userAvatar) userAvatar.style.backgroundColor = currentUser.color;
+      });
+    });
+
+    const saveIdentityBtn = document.getElementById('saveIdentity');
+    if (saveIdentityBtn) {
+      saveIdentityBtn.onclick = () => {
+        currentUser.isAnonymous = anonToggle ? anonToggle.checked : true;
+        currentUser.name = currentUser.isAnonymous ? "Anonymous" : ((nameInput && nameInput.value.trim()) || "Guest");
+        try {
+          localStorage.setItem(IDENTITY_KEY, JSON.stringify(currentUser));
+        } catch (e) {}
+        updateIdentityUI();
+        if (identityModal) identityModal.classList.remove('open');
+        showToast(`Posting as: ${currentUser.name}`);
+      };
+    }
+
+    const identityTrigger = document.getElementById('identityTrigger');
+    if (identityTrigger) identityTrigger.onclick = () => identityModal && identityModal.classList.add('open');
+    if (identityModal) {
+      identityModal.onclick = (e) => { if (e.target === identityModal) identityModal.classList.remove('open'); };
+    }
+
+    // ── Canvas Navigation (Pan & Zoom) ──
+    let isPanning = false;
+    let startPan = { x: 0, y: 0 };
+
+    function updateTransform() {
+      if (!world || !viewport || !zoomDisplay) return;
+      world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+      zoomDisplay.textContent = `${Math.round(state.zoom * 100)}%`;
+      viewport.style.backgroundPosition = `${state.pan.x}px ${state.pan.y}px`;
+      viewport.style.backgroundSize = `${32 * state.zoom}px ${32 * state.zoom}px`;
+    }
+
+    if (viewport) {
+      viewport.addEventListener('mousedown', (e) => {
+        if (e.target === viewport || e.target === world) {
+          isPanning = true;
+          startPan = { x: e.clientX - state.pan.x, y: e.clientY - state.pan.y };
+          viewport.classList.add('panning');
+        }
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+          state.pan.x = e.clientX - startPan.x;
+          state.pan.y = e.clientY - startPan.y;
+          updateTransform();
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isPanning) {
+          isPanning = false;
+          viewport.classList.remove('panning');
+        }
+      });
+
+      // Mobile touch pan
+      let touchStart = { x: 0, y: 0 };
+      viewport.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1 && (e.target === viewport || e.target === world)) {
+          isPanning = true;
+          touchStart = { x: e.touches[0].clientX - state.pan.x, y: e.touches[0].clientY - state.pan.y };
+        }
+      }, { passive: true });
+
+      viewport.addEventListener('touchmove', (e) => {
+        if (isPanning && e.touches.length === 1) {
+          state.pan.x = e.touches[0].clientX - touchStart.x;
+          state.pan.y = e.touches[0].clientY - touchStart.y;
+          updateTransform();
+        }
+      }, { passive: true });
+
+      viewport.addEventListener('touchend', () => { isPanning = false; });
+
+      // Wheel zoom
+      viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+        const newZoom = Math.min(Math.max(state.zoom * zoomFactor, 0.3), 2.5);
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+        state.pan.x = mouseX - (mouseX - state.pan.x) * (newZoom / state.zoom);
+        state.pan.y = mouseY - (mouseY - state.pan.y) * (newZoom / state.zoom);
+        state.zoom = newZoom;
+        updateTransform();
+      }, { passive: false });
+
+      // Double-click to spawn note
+      viewport.addEventListener('dblclick', (e) => {
+        if (e.target === viewport || e.target === world) {
+          const worldX = (e.clientX - state.pan.x) / state.zoom;
+          const worldY = (e.clientY - state.pan.y) / state.zoom;
+          createNewNote(worldX - 140, worldY - 50);
+        }
+      });
+    }
+
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const zoomResetBtn = document.getElementById('zoomReset');
+    if (zoomInBtn) zoomInBtn.onclick = () => { state.zoom = Math.min(state.zoom * 1.2, 2.5); updateTransform(); };
+    if (zoomOutBtn) zoomOutBtn.onclick = () => { state.zoom = Math.max(state.zoom * 0.8, 0.3); updateTransform(); };
+    if (zoomResetBtn) zoomResetBtn.onclick = () => { state.zoom = 1.0; state.pan = { x: 0, y: 0 }; updateTransform(); };
+
+    // ── Note Lifecycle & Card Rendering ──
+    function createNewNote(x, y) {
+      const note = sanitizeNote({
+        id: 'note_' + Math.random().toString(36).substr(2, 9),
+        x: Math.round(x || (-state.pan.x + window.innerWidth / 2 - 140) / state.zoom),
+        y: Math.round(y || (-state.pan.y + window.innerHeight / 2 - 100) / state.zoom),
+        title: "",
+        body: "",
+        theme: colorThemes[Math.floor(Math.random() * (colorThemes.length - 1))],
+        author: {
+          name: currentUser.isAnonymous ? "Anonymous" : currentUser.name,
+          isAnon: currentUser.isAnonymous,
+          color: currentUser.color
+        },
+        createdAt: Date.now(),
+        likes: 0
+      });
+
+      state.notes.push(note);
+      renderAllNotes();
+      saveLocal();
+      broadcastMessage({ type: 'NOTE_UPSERT', note });
+
+      setTimeout(() => {
+        const card = document.getElementById(note.id);
+        if (card) {
+          const title = card.querySelector('.card-title');
+          if (title) title.focus();
+        }
+      }, 60);
+    }
+
+    function renderAllNotes() {
+      if (!world) return;
+
+      // Safe check for currently active element
+      const activeEl = document.activeElement;
+      let activeId = null;
+      let isTitle = false;
+      let isBody = false;
+
+      if (activeEl && activeEl instanceof Element) {
+        const cardContainer = activeEl.closest('.note-card');
+        if (cardContainer) {
+          activeId = cardContainer.id;
+          isTitle = activeEl.classList.contains('card-title');
+          isBody = activeEl.classList.contains('card-body');
+        }
+      }
+
+      world.innerHTML = '';
+      state.notes.forEach(note => {
+        const card = document.createElement('div');
+        card.className = `note-card theme-${note.theme || 'yellow'}`;
+        card.id = note.id;
+        card.style.left = `${note.x}px`;
+        card.style.top = `${note.y}px`;
+
+        const authorDisplay = (note.author && note.author.isAnon) ? "Anonymous" : escapeHTML(note.author ? note.author.name : "Anonymous");
+        const authorColor = (note.author && note.author.color) ? note.author.color : "#64748b";
+
+        card.innerHTML = `
+          <div class="card-header">
+            <div class="author-tag" style="color: ${authorColor}">
+              <span class="author-dot"></span>
+              <span>${authorDisplay}</span>
+            </div>
+            <button class="btn-icon delete-btn" title="Delete note">✕</button>
+          </div>
+          <div class="card-title" contenteditable="true" spellcheck="false">${escapeHTML(note.title)}</div>
+          <div class="card-body" contenteditable="true" spellcheck="false">${escapeHTML(note.body)}</div>
+          <div class="card-footer">
+            <div class="palette-row">
+              ${colorThemes.map(th => `<div class="color-dot theme-picker" data-theme="${th}" style="background:var(--card-accent)"></div>`).join('')}
+            </div>
+            <div class="card-actions">
+              <button class="like-btn" title="Upvote">
+                ♥ <span class="like-count">${note.likes || 0}</span>
+              </button>
+            </div>
+          </div>
+        `;
+
+        setupCardInteractions(card, note);
+        world.appendChild(card);
+      });
+
+      // Restore active focus if user was typing
+      if (activeId) {
+        const card = document.getElementById(activeId);
+        if (card) {
+          if (isTitle) card.querySelector('.card-title')?.focus();
+          else if (isBody) card.querySelector('.card-body')?.focus();
+        }
+      }
+    }
+
+    function setupCardInteractions(card, note) {
+      const header = card.querySelector('.card-header');
+      const titleEl = card.querySelector('.card-title');
+      const bodyEl = card.querySelector('.card-body');
+      const deleteBtn = card.querySelector('.delete-btn');
+      const likeBtn = card.querySelector('.like-btn');
+
+      // Dragging Note via Header Only
+      let isDragging = false;
+      let dragOffset = { x: 0, y: 0 };
+
+      const onMouseDown = (clientX, clientY) => {
+        isDragging = true;
+        card.classList.add('dragging');
+        dragOffset.x = (clientX / state.zoom) - note.x;
+        dragOffset.y = (clientY / state.zoom) - note.y;
+      };
+
+      const onMouseMove = (clientX, clientY) => {
+        if (!isDragging) return;
+        note.x = Math.round((clientX / state.zoom) - dragOffset.x);
+        note.y = Math.round((clientY / state.zoom) - dragOffset.y);
+        note.updatedAt = Date.now();
+        card.style.left = `${note.x}px`;
+        card.style.top = `${note.y}px`;
+      };
+
+      const onMouseUp = () => {
+        if (isDragging) {
+          isDragging = false;
+          card.classList.remove('dragging');
+          saveLocal();
+          broadcastMessage({ type: 'NOTE_UPSERT', note });
+        }
+      };
+
+      if (header) {
+        header.addEventListener('mousedown', (e) => {
+          if (e.target.closest('button')) return;
+          e.stopPropagation();
+          onMouseDown(e.clientX, e.clientY);
+
+          const moveHandler = (ev) => onMouseMove(ev.clientX, ev.clientY);
+          const upHandler = () => {
+            onMouseUp();
+            window.removeEventListener('mousemove', moveHandler);
+            window.removeEventListener('mouseup', upHandler);
+          };
+          window.addEventListener('mousemove', moveHandler);
+          window.addEventListener('mouseup', upHandler);
+        });
+
+        header.addEventListener('touchstart', (e) => {
+          if (e.target.closest('button')) return;
+          e.stopPropagation();
+          const touch = e.touches[0];
+          onMouseDown(touch.clientX, touch.clientY);
+
+          const moveHandler = (ev) => {
+            const t = ev.touches[0];
+            onMouseMove(t.clientX, t.clientY);
+          };
+          const upHandler = () => {
+            onMouseUp();
+            window.removeEventListener('touchmove', moveHandler);
+            window.removeEventListener('touchend', upHandler);
+          };
+          window.addEventListener('touchmove', moveHandler, { passive: true });
+          window.addEventListener('touchend', upHandler);
+        }, { passive: true });
+      }
+
+      // Live Text Updates
+      let syncDebounce = null;
+      const onTextInput = () => {
+        note.title = titleEl ? titleEl.innerText : "";
+        note.body = bodyEl ? bodyEl.innerText : "";
+        saveLocal();
+
+        clearTimeout(syncDebounce);
+        syncDebounce = setTimeout(() => {
+          broadcastMessage({ type: 'NOTE_UPSERT', note });
+        }, 400);
+      };
+
+      if (titleEl) {
+        titleEl.addEventListener('input', onTextInput);
+        titleEl.addEventListener('mousedown', (e) => e.stopPropagation());
+      }
+      if (bodyEl) {
+        bodyEl.addEventListener('input', onTextInput);
+        bodyEl.addEventListener('mousedown', (e) => e.stopPropagation());
+      }
+
+      // Theme Selection
+      card.querySelectorAll('.theme-picker').forEach(picker => {
+        picker.addEventListener('click', (e) => {
+          e.stopPropagation();
+          note.theme = e.target.dataset.theme;
+          card.className = `note-card theme-${note.theme}`;
+          saveLocal();
+          broadcastMessage({ type: 'NOTE_UPSERT', note });
+        });
+      });
+
+      // Upvoting
+      if (likeBtn) {
+        likeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          note.likes = (note.likes || 0) + 1;
+          const countEl = card.querySelector('.like-count');
+          if (countEl) countEl.textContent = note.likes;
+          likeBtn.classList.add('liked');
+          saveLocal();
+          broadcastMessage({ type: 'NOTE_UPSERT', note });
+        });
+      }
+
+      // Delete
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          state.notes = state.notes.filter(n => n.id !== note.id);
+          card.remove();
+          saveLocal();
+          broadcastMessage({ type: 'NOTE_DELETE', noteId: note.id });
+          showToast("Note deleted");
+        });
+      }
+    }
+
+    // ── Auto-Grid Arranger ──
+    const btnOrganize = document.getElementById('btnOrganize');
+    if (btnOrganize) {
+      btnOrganize.addEventListener('click', () => {
+        const startX = 100, startY = 120, colW = 310, rowH = 260;
+        const maxCols = Math.max(1, Math.floor((window.innerWidth - 100) / colW));
+
+        state.notes.forEach((note, i) => {
+          note.x = startX + (i % maxCols) * colW;
+          note.y = startY + Math.floor(i / maxCols) * rowH;
+        });
+
+        renderAllNotes();
+        saveLocal();
+        broadcastMessage({ type: 'FULL_SYNC', state: { title: state.title, notes: state.notes } });
+        showToast("Arranged in clean grid!");
+      });
+    }
+
+    // ── Invite & QR Modal ──
+    const btnInvite = document.getElementById('btnInvite');
+    const qrImg = document.getElementById('qrImg');
+    const inviteUrlText = document.getElementById('inviteUrlText');
+    const closeInvite = document.getElementById('closeInvite');
+    const btnCopyInviteLink = document.getElementById('btnCopyInviteLink');
+
+    if (btnInvite) {
+      btnInvite.onclick = () => {
+        const fullUrl = `${window.location.origin}${window.location.pathname}#room=${currentRoom}`;
+        if (inviteUrlText) inviteUrlText.textContent = fullUrl;
+        if (qrImg) qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(fullUrl)}`;
+        if (inviteModal) inviteModal.classList.add('open');
+      };
+    }
+
+    if (closeInvite) closeInvite.onclick = () => inviteModal && inviteModal.classList.remove('open');
+    if (inviteModal) {
+      inviteModal.onclick = (e) => { if (e.target === inviteModal) inviteModal.classList.remove('open'); };
+    }
+
+    if (btnCopyInviteLink) {
+      btnCopyInviteLink.onclick = () => {
+        const fullUrl = `${window.location.origin}${window.location.pathname}#room=${currentRoom}`;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(fullUrl).then(() => {
+            showToast("Link copied to clipboard!");
+            if (inviteModal) inviteModal.classList.remove('open');
+          }).catch(() => {});
+        }
+      };
+    }
+
+    // ── Switch Room Modal ──
+    const btnChangeRoom = document.getElementById('btnChangeRoom');
+    const roomInput = document.getElementById('roomInput');
+    const closeRoomModal = document.getElementById('closeRoomModal');
+    const btnJoinRoom = document.getElementById('btnJoinRoom');
+
+    if (btnChangeRoom) {
+      btnChangeRoom.onclick = () => {
+        if (roomInput) roomInput.value = currentRoom;
+        if (roomModal) roomModal.classList.add('open');
+      };
+    }
+    if (closeRoomModal) closeRoomModal.onclick = () => roomModal && roomModal.classList.remove('open');
+    if (roomModal) {
+      roomModal.onclick = (e) => { if (e.target === roomModal) roomModal.classList.remove('open'); };
+    }
+
+    if (btnJoinRoom) {
+      btnJoinRoom.onclick = () => {
+        const val = roomInput ? roomInput.value.trim() : "";
+        if (val) {
+          window.location.hash = `room=${val}`;
+          window.location.reload();
+        }
+      };
+    }
+
+    if (boardTitle) {
+      boardTitle.oninput = () => {
+        state.title = boardTitle.value;
+        saveLocal();
+        broadcastMessage({ type: 'BOARD_TITLE', title: state.title });
+      };
+    }
+
+    const btnNewNote = document.getElementById('btnNewNote');
+    const fabAdd = document.getElementById('fabAdd');
+    if (btnNewNote) btnNewNote.onclick = () => createNewNote();
+    if (fabAdd) fabAdd.onclick = () => createNewNote();
+
+    function escapeHTML(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
+    }
+
+    // ── Launch ──
+    loadIdentity();
+    loadLocal();
+    if (boardTitle) boardTitle.value = state.title || "Live Class Board";
+    updateTransform();
+    renderAllNotes();
+    initNativeSync();
+  </script>
+</body>
+</html>
