@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Padlet Canvas · GitHub Pages Edition</title>
+  <style>
+    :root {
+      --bg-canvas: #0f172a;
+      --grid-dot: #334155;
+      --surface: #1e293b;
+      --surface-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --danger: #ef4444;
+      --radius: 12px;
+      --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+      --shadow-drag: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, monospace;
+    }
+
+    /* Note Color Themes */
+    .theme-yellow { --card-bg: #fef08a; --card-text: #713f12; --card-accent: #eab308; --card-border: #fde047; }
+    .theme-blue   { --card-bg: #bae6fd; --card-text: #0c4a6e; --card-accent: #0284c7; --card-border: #7dd3fc; }
+    .theme-green  { --card-bg: #bbf7d0; --card-text: #14532d; --card-accent: #16a34a; --card-border: #86efac; }
+    .theme-pink   { --card-bg: #fbcfe8; --card-text: #831843; --card-accent: #db2777; --card-border: #f472b6; }
+    .theme-purple { --card-bg: #e9d5ff; --card-text: #581c87; --card-accent: #9333ea; --card-border: #d8b4fe; }
+    .theme-dark   { --card-bg: #1e293b; --card-text: #f8fafc; --card-accent: #818cf8; --card-border: #475569; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body, html {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: var(--font-sans); background: var(--bg-canvas); color: var(--text-main);
+    }
+
+    /* ── Top Navigation & Control Bar ── */
+    header.app-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: 60px;
+      background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--surface-border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 1000;
+    }
+    .brand-section { display: flex; align-items: center; gap: 12px; }
+    .board-title {
+      font-size: 16px; font-weight: 700; color: #fff; background: transparent;
+      border: 1px solid transparent; border-radius: 6px; padding: 4px 8px;
+      outline: none; transition: all 0.2s;
+    }
+    .board-title:focus, .board-title:hover {
+      background: var(--surface); border-color: var(--surface-border);
+    }
+
+    .nav-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* ── Identity / Author Switcher Pill ── */
+    .identity-pill {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface); border: 1px solid var(--surface-border);
+      padding: 4px 10px; border-radius: 30px; font-size: 13px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .identity-pill:hover { border-color: #64748b; }
+    .avatar-circle {
+      width: 24px; height: 24px; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-size: 12px;
+      font-weight: 700; color: #fff; background: #64748b;
+    }
+    .identity-pill.anon .avatar-circle { background: #475569; }
+
+    /* Buttons */
+    .btn {
+      background: var(--surface); border: 1px solid var(--surface-border);
+      color: var(--text-main); font-size: 13px; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
+    }
+    .btn:hover { background: #273549; border-color: #475569; }
+    .btn.primary { background: var(--primary); border-color: #818cf8; color: #fff; }
+    .btn.primary:hover { background: var(--primary-hover); }
+
+    /* ── Canvas Viewport ── */
+    .canvas-viewport {
+      width: 100vw; height: 100vh; position: absolute; top: 0; left: 0;
+      overflow: hidden; cursor: grab; user-select: none;
+      background-image: radial-gradient(var(--grid-dot) 1.5px, transparent 1.5px);
+      background-size: 32px 32px;
+    }
+    .canvas-viewport.panning { cursor: grabbing; }
+
+    .canvas-world {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; transform-origin: 0 0;
+      pointer-events: none;
+    }
+
+    /* ── Sticky Note Card ── */
+    .note-card {
+      position: absolute; width: 280px; min-height: 160px;
+      background: var(--card-bg); color: var(--card-text);
+      border-radius: var(--radius); border: 1px solid var(--card-border);
+      box-shadow: var(--shadow-card); padding: 16px;
+      pointer-events: auto; cursor: default;
+      display: flex; flex-direction: column; gap: 10px;
+      transform-origin: center center;
+      transition: box-shadow 0.2s, transform 0.1s;
+      z-index: 10;
+    }
+    .note-card.dragging {
+      box-shadow: var(--shadow-drag); cursor: grabbing; z-index: 9999;
+      transform: scale(1.03) rotate(1deg); opacity: 0.95;
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: grab; padding-bottom: 4px;
+    }
+    .card-header .author-tag {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;
+      opacity: 0.85;
+    }
+    .card-header .author-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+    }
+    .btn-icon {
+      background: transparent; border: none; color: inherit; cursor: pointer;
+      opacity: 0.6; border-radius: 4px; padding: 2px 4px; font-size: 14px;
+    }
+    .btn-icon:hover { opacity: 1; background: rgba(0, 0, 0, 0.08); }
+
+    .card-title {
+      font-size: 16px; font-weight: 700; line-height: 1.3;
+      outline: none; word-break: break-word;
+    }
+    .card-title:empty:before {
+      content: "Note Title..."; opacity: 0.45;
+    }
+
+    .card-body {
+      font-size: 13.5px; line-height: 1.5; outline: none;
+      word-break: break-word; min-height: 60px; flex: 1;
+    }
+    .card-body:empty:before {
+      content: "Type your thoughts, ideas, or links here..."; opacity: 0.45;
+    }
+
+    .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 8px; border-top: 1px solid rgba(0, 0, 0, 0.08);
+      font-size: 12px;
+    }
+    .card-date { font-size: 10.5px; opacity: 0.65; font-family: var(--font-mono); }
+
+    .card-actions { display: flex; align-items: center; gap: 8px; }
+    .like-btn {
+      background: rgba(0, 0, 0, 0.05); border: none; border-radius: 20px;
+      padding: 3px 8px; font-size: 11.5px; font-weight: 600; color: inherit;
+      cursor: pointer; display: flex; align-items: center; gap: 4px;
+      transition: all 0.15s;
+    }
+    .like-btn:hover { background: rgba(0, 0, 0, 0.12); transform: scale(1.05); }
+    .like-btn.liked { color: var(--danger); background: rgba(239, 68, 68, 0.15); }
+
+    /* Palette Picker Popover */
+    .palette-row { display: flex; gap: 4px; align-items: center; }
+    .color-dot {
+      width: 14px; height: 14px; border-radius: 50%; cursor: pointer;
+      border: 1px solid rgba(0, 0, 0, 0.2); transition: transform 0.15s;
+    }
+    .color-dot:hover { transform: scale(1.25); }
+
+    /* ── Floating Controls ── */
+    .hud-controls {
+      position: fixed; bottom: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 10px; z-index: 1000;
+    }
+    .fab-add {
+      width: 54px; height: 54px; border-radius: 50%;
+      background: var(--primary); color: #fff; border: 2px solid #818cf8;
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5); font-size: 26px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: transform 0.2s, background 0.2s;
+    }
+    .fab-add:hover { transform: scale(1.08) rotate(90deg); background: var(--primary-hover); }
+
+    .zoom-toolbar {
+      position: fixed; bottom: 24px; left: 24px;
+      background: var(--surface); border: 1px solid var(--surface-border);
+      border-radius: 30px; padding: 4px 10px; display: flex; align-items: center;
+      gap: 8px; box-shadow: var(--shadow-card); z-index: 1000;
+    }
+    .zoom-btn {
+      background: none; border: none; color: var(--text-main); font-size: 16px;
+      width: 26px; height: 26px; cursor: pointer; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .zoom-btn:hover { background: #334155; }
+    .zoom-val { font-size: 11px; font-family: var(--font-mono); min-width: 44px; text-align: center; }
+
+    /* ── Modal Dialogs ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px); display: none; align-items: center;
+      justify-content: center; z-index: 2000;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+      background: var(--surface); border: 1px solid var(--surface-border);
+      width: 90%; max-width: 420px; border-radius: 16px; padding: 24px;
+      box-shadow: var(--shadow-drag); display: flex; flex-direction: column; gap: 16px;
+    }
+    .modal-header { font-size: 17px; font-weight: 700; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+    .form-input {
+      background: #0f172a; border: 1px solid var(--surface-border); border-radius: 8px;
+      padding: 10px; color: #fff; font-size: 14px; outline: none;
+    }
+    .form-input:focus { border-color: var(--primary); }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+    .switch {
+      position: relative; width: 44px; height: 24px; display: inline-block;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0; background-color: #334155;
+      transition: .3s; border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background-color: white; transition: .3s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Toast Notifications */
+    .toast-msg {
+      position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+      background: rgba(30, 41, 59, 0.95); border: 1px solid var(--primary);
+      padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.4); z-index: 3000;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .toast-msg.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <header class="app-bar">
+    <div class="brand-section">
+      <span style="font-size:20px;">📌</span>
+      <input type="text" class="board-title" id="boardTitle" value="Collaborative Canvas" title="Click to rename board">
+    </div>
+
+    <div class="nav-actions">
+      <!-- Identity Picker (Anonymous vs Named) -->
+      <div class="identity-pill" id="identityTrigger" title="Change Posting Identity">
+        <div class="avatar-circle" id="userAvatar">A</div>
+        <span id="userNameDisplay">Anonymous</span>
+      </div>
+
+      <button class="btn" id="btnOrganize" title="Organize notes into clean grid">Auto-Grid</button>
+      <button class="btn" id="btnShare" title="Export or Share Snapshot">Share / Save</button>
+      <button class="btn primary" id="btnNewNote">+ Add Note</button>
+    </div>
+  </header>
+
+  <!-- Infinite Canvas Viewport -->
+  <main class="canvas-viewport" id="viewport">
+    <div class="canvas-world" id="world"></div>
+  </main>
+
+  <!-- HUD Floating Controls -->
+  <div class="zoom-toolbar">
+    <button class="zoom-btn" id="zoomOut" title="Zoom Out">−</button>
+    <span class="zoom-val" id="zoomDisplay">100%</span>
+    <button class="zoom-btn" id="zoomIn" title="Zoom In">+</button>
+    <button class="zoom-btn" id="zoomReset" title="Reset View" style="font-size:12px;">↺</button>
+  </div>
+
+  <div class="hud-controls">
+    <button class="fab-add" id="fabAdd" title="Create note at center">+</button>
+  </div>
+
+  <!-- Identity Modal -->
+  <div class="modal-overlay" id="identityModal">
+    <div class="modal-card">
+      <div class="modal-header">Posting Identity</div>
+      <div class="toggle-row">
+        <span>Post Anonymously</span>
+        <label class="switch">
+          <input type="checkbox" id="anonToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="form-group" id="nameGroup">
+        <label>Your Display Name</label>
+        <input type="text" class="form-input" id="nameInput" placeholder="e.g. Jane Doe, Dr. Canziani">
+      </div>
+      <div class="form-group">
+        <label>Avatar Color</label>
+        <div class="palette-row" style="margin-top:4px;">
+          <div class="color-dot" style="background:#6366f1" data-color="#6366f1"></div>
+          <div class="color-dot" style="background:#0ea5e9" data-color="#0ea5e9"></div>
+          <div class="color-dot" style="background:#10b981" data-color="#10b981"></div>
+          <div class="color-dot" style="background:#f59e0b" data-color="#f59e0b"></div>
+          <div class="color-dot" style="background:#ec4899" data-color="#ec4899"></div>
+          <div class="color-dot" style="background:#8b5cf6" data-color="#8b5cf6"></div>
+        </div>
+      </div>
+      <button class="btn primary" style="width:100%; justify-content:center;" id="saveIdentity">Done</button>
+    </div>
+  </div>
+
+  <!-- Share / Sync Modal -->
+  <div class="modal-overlay" id="shareModal">
+    <div class="modal-card">
+      <div class="modal-header">Board Storage &amp; Sharing</div>
+      <p style="font-size:12.5px; color:var(--text-muted); line-height:1.5;">
+        This board automatically saves state in your browser's local storage. To share or publish, choose an option:
+      </p>
+      <button class="btn primary" id="btnCopyUrl" style="justify-content:center;">📋 Copy Snapshot Link</button>
+      <button class="btn" id="btnDownloadJson" style="justify-content:center;">💾 Download JSON File</button>
+      <label class="btn" style="justify-content:center; cursor:pointer;">
+        📂 Import JSON File
+        <input type="file" id="fileInput" accept=".json" style="display:none;">
+      </label>
+      <button class="btn" id="btnResetBoard" style="color:var(--danger); justify-content:center;">🗑 Clear All Notes</button>
+      <button class="btn" id="closeShare" style="margin-top:8px; justify-content:center;">Close</button>
+    </div>
+  </div>
+
+  <div class="toast-msg" id="toast">Changes saved</div>
+
+  <!-- ── App Logic ── -->
+  <script>
+    /**
+     * Collaborative Canvas Engine for GitHub Pages
+     * Pure vanilla JS, zero dependencies, local & URL-state persistence.
+     */
+
+    const STORAGE_KEY = 'padlet_gh_state_v1';
+    const IDENTITY_KEY = 'padlet_gh_identity';
+
+    // ── Application State ──
+    let state = {
+      title: "Collaborative Canvas",
+      notes: [],
+      pan: { x: 0, y: 0 },
+      zoom: 1.0
+    };
+
+    let currentUser = {
+      isAnonymous: true,
+      name: "Anonymous",
+      color: "#64748b"
+    };
+
+    const colorThemes = ['yellow', 'blue', 'green', 'pink', 'purple', 'dark'];
+
+    // ── DOM References ──
+    const viewport = document.getElementById('viewport');
+    const world = document.getElementById('world');
+    const boardTitle = document.getElementById('boardTitle');
+    const zoomDisplay = document.getElementById('zoomDisplay');
+    const toast = document.getElementById('toast');
+
+    // Identity UI
+    const identityTrigger = document.getElementById('identityTrigger');
+    const identityModal = document.getElementById('identityModal');
+    const anonToggle = document.getElementById('anonToggle');
+    const nameGroup = document.getElementById('nameGroup');
+    const nameInput = document.getElementById('nameInput');
+    const userAvatar = document.getElementById('userAvatar');
+    const userNameDisplay = document.getElementById('userNameDisplay');
+    const saveIdentity = document.getElementById('saveIdentity');
+
+    // Share Modal UI
+    const shareModal = document.getElementById('shareModal');
+    const btnShare = document.getElementById('btnShare');
+    const closeShare = document.getElementById('closeShare');
+    const btnCopyUrl = document.getElementById('btnCopyUrl');
+    const btnDownloadJson = document.getElementById('btnDownloadJson');
+    const fileInput = document.getElementById('fileInput');
+    const btnResetBoard = document.getElementById('btnResetBoard');
+
+    // ── Toast Messenger ──
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    // ── State Persistence (Local + Hash) ──
+    function saveState() {
+      state.title = boardTitle.value;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function loadState() {
+      // 1. Try URL hash first (for shared links)
+      if (window.location.hash.length > 5) {
+        try {
+          const raw = decodeURIComponent(atob(window.location.hash.substring(1)));
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.notes)) {
+            state = parsed;
+            showToast("Loaded board from shared link!");
+            return;
+          }
+        } catch (e) {
+          console.warn("Could not parse hash snapshot:", e);
+        }
+      }
+
+      // 2. Try localStorage
+      const local = localStorage.getItem(STORAGE_KEY);
+      if (local) {
+        try {
+          state = JSON.parse(local);
+        } catch (e) {
+          console.error("Local state corrupt, resetting:", e);
+        }
+      }
+
+      // 3. Defaults if empty
+      if (!state.notes || state.notes.length === 0) {
+        createDefaultCards();
+      }
+    }
+
+    function createDefaultCards() {
+      state.notes = [
+        {
+          id: 'note_' + Math.random().toString(36).substr(2, 9),
+          x: 180, y: 160,
+          title: "Welcome to Canvas! 👋",
+          body: "Double click anywhere on the background to make a note.\n\nDrag this card by its header to arrange.",
+          theme: "yellow",
+          author: { name: "Moderator", isAnon: false, color: "#6366f1" },
+          createdAt: Date.now() - 3600000,
+          likes: 4
+        },
+        {
+          id: 'note_' + Math.random().toString(36).substr(2, 9),
+          x: 520, y: 160,
+          title: "Anonymous & Named Entries 👤",
+          body: "Click your avatar on the top right to toggle between posting as Anonymous or with your name.",
+          theme: "blue",
+          author: { name: "Anonymous", isAnon: true, color: "#64748b" },
+          createdAt: Date.now() - 1800000,
+          likes: 2
+        }
+      ];
+    }
+
+    // ── Identity Management ──
+    function loadIdentity() {
+      const stored = localStorage.getItem(IDENTITY_KEY);
+      if (stored) {
+        try { currentUser = JSON.parse(stored); } catch (e) {}
+      }
+      updateIdentityUI();
+    }
+
+    function saveIdentitySettings() {
+      currentUser.isAnonymous = anonToggle.checked;
+      currentUser.name = currentUser.isAnonymous ? "Anonymous" : (nameInput.value.trim() || "Guest");
+      localStorage.setItem(IDENTITY_KEY, JSON.stringify(currentUser));
+      updateIdentityUI();
+      identityModal.classList.remove('open');
+      showToast(`Posting as: ${currentUser.name}`);
+    }
+
+    function updateIdentityUI() {
+      userNameDisplay.textContent = currentUser.name;
+      userAvatar.style.backgroundColor = currentUser.color;
+      userAvatar.textContent = currentUser.isAnonymous ? "👤" : currentUser.name.charAt(0).toUpperCase();
+      identityTrigger.classList.toggle('anon', currentUser.isAnonymous);
+
+      anonToggle.checked = currentUser.isAnonymous;
+      nameInput.value = currentUser.isAnonymous ? "" : currentUser.name;
+      nameGroup.style.display = currentUser.isAnonymous ? 'none' : 'flex';
+    }
+
+    anonToggle.addEventListener('change', () => {
+      nameGroup.style.display = anonToggle.checked ? 'none' : 'flex';
+    });
+
+    document.querySelectorAll('.palette-row .color-dot').forEach(dot => {
+      dot.addEventListener('click', (e) => {
+        currentUser.color = e.target.dataset.color;
+        userAvatar.style.backgroundColor = currentUser.color;
+      });
+    });
+
+    identityTrigger.addEventListener('click', () => identityModal.classList.add('open'));
+    saveIdentity.addEventListener('click', saveIdentitySettings);
+    identityModal.addEventListener('click', (e) => {
+      if (e.target === identityModal) identityModal.classList.remove('open');
+    });
+
+    // ── Pan & Zoom Viewport Navigation ──
+    let isPanning = false;
+    let startPan = { x: 0, y: 0 };
+
+    function updateTransform() {
+      world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+      zoomDisplay.textContent = `${Math.round(state.zoom * 100)}%`;
+      viewport.style.backgroundPosition = `${state.pan.x}px ${state.pan.y}px`;
+      viewport.style.backgroundSize = `${32 * state.zoom}px ${32 * state.zoom}px`;
+    }
+
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target === viewport || e.target === world) {
+        isPanning = true;
+        startPan = { x: e.clientX - state.pan.x, y: e.clientY - state.pan.y };
+        viewport.classList.add('panning');
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+        state.pan.x = e.clientX - startPan.x;
+        state.pan.y = e.clientY - startPan.y;
+        updateTransform();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isPanning) {
+        isPanning = false;
+        viewport.classList.remove('panning');
+        saveState();
+      }
+    });
+
+    // Wheel zoom towards pointer
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+      const newZoom = Math.min(Math.max(state.zoom * zoomFactor, 0.3), 2.5);
+
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+
+      state.pan.x = mouseX - (mouseX - state.pan.x) * (newZoom / state.zoom);
+      state.pan.y = mouseY - (mouseY - state.pan.y) * (newZoom / state.zoom);
+      state.zoom = newZoom;
+
+      updateTransform();
+      saveState();
+    }, { passive: false });
+
+    // Double click canvas to add note
+    viewport.addEventListener('dblclick', (e) => {
+      if (e.target === viewport || e.target === world) {
+        const worldX = (e.clientX - state.pan.x) / state.zoom;
+        const worldY = (e.clientY - state.pan.y) / state.zoom;
+        createNewNote(worldX - 140, worldY - 50);
+      }
+    });
+
+    // Zoom buttons
+    document.getElementById('zoomIn').onclick = () => { state.zoom = Math.min(state.zoom * 1.2, 2.5); updateTransform(); saveState(); };
+    document.getElementById('zoomOut').onclick = () => { state.zoom = Math.max(state.zoom * 0.8, 0.3); updateTransform(); saveState(); };
+    document.getElementById('zoomReset').onclick = () => { state.zoom = 1.0; state.pan = { x: 0, y: 0 }; updateTransform(); saveState(); };
+
+    // ── Note CRUD & Rendering ──
+    function createNewNote(x, y) {
+      const note = {
+        id: 'note_' + Math.random().toString(36).substr(2, 9),
+        x: Math.round(x || (-state.pan.x + window.innerWidth / 2 - 140) / state.zoom),
+        y: Math.round(y || (-state.pan.y + window.innerHeight / 2 - 100) / state.zoom),
+        title: "",
+        body: "",
+        theme: colorThemes[Math.floor(Math.random() * (colorThemes.length - 1))], // pastel
+        author: {
+          name: currentUser.isAnonymous ? "Anonymous" : currentUser.name,
+          isAnon: currentUser.isAnonymous,
+          color: currentUser.color
+        },
+        createdAt: Date.now(),
+        likes: 0
+      };
+
+      state.notes.push(note);
+      renderNotes();
+      saveState();
+
+      // Focus new title immediately
+      setTimeout(() => {
+        const el = document.getElementById(note.id);
+        if (el) el.querySelector('.card-title').focus();
+      }, 50);
+    }
+
+    function renderNotes() {
+      world.innerHTML = '';
+      state.notes.forEach(note => {
+        const card = document.createElement('div');
+        card.className = `note-card theme-${note.theme || 'yellow'}`;
+        card.id = note.id;
+        card.style.left = `${note.x}px`;
+        card.style.top = `${note.y}px`;
+
+        const authorDisplay = note.author.isAnon ? "Anonymous" : escapeHTML(note.author.name);
+        const dateDisplay = timeAgo(note.createdAt);
+
+        card.innerHTML = `
+          <div class="card-header">
+            <div class="author-tag" style="color: ${note.author.color || 'inherit'}">
+              <span class="author-dot"></span>
+              <span>${authorDisplay}</span>
+            </div>
+            <button class="btn-icon delete-btn" title="Delete note">✕</button>
+          </div>
+          <div class="card-title" contenteditable="true" spellcheck="false">${escapeHTML(note.title)}</div>
+          <div class="card-body" contenteditable="true" spellcheck="false">${escapeHTML(note.body)}</div>
+          <div class="card-footer">
+            <div class="palette-row">
+              ${colorThemes.map(th => `<div class="color-dot theme-picker" data-theme="${th}" style="background:var(--card-accent)"></div>`).join('')}
+            </div>
+            <div class="card-actions">
+              <button class="like-btn" title="Like this note">
+                ♥ <span class="like-count">${note.likes || 0}</span>
+              </button>
+            </div>
+          </div>
+        `;
+
+        setupCardInteractions(card, note);
+        world.appendChild(card);
+      });
+    }
+
+    function setupCardInteractions(card, note) {
+      const header = card.querySelector('.card-header');
+      const titleEl = card.querySelector('.card-title');
+      const bodyEl = card.querySelector('.card-body');
+      const deleteBtn = card.querySelector('.delete-btn');
+      const likeBtn = card.querySelector('.like-btn');
+
+      // Drag card via header
+      let isDragging = false;
+      let dragOffset = { x: 0, y: 0 };
+
+      header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        isDragging = true;
+        card.classList.add('dragging');
+
+        dragOffset.x = (e.clientX / state.zoom) - note.x;
+        dragOffset.y = (e.clientY / state.zoom) - note.y;
+
+        const onMove = (ev) => {
+          if (!isDragging) return;
+          note.x = Math.round((ev.clientX / state.zoom) - dragOffset.x);
+          note.y = Math.round((ev.clientY / state.zoom) - dragOffset.y);
+          card.style.left = `${note.x}px`;
+          card.style.top = `${note.y}px`;
+        };
+
+        const onUp = () => {
+          isDragging = false;
+          card.classList.remove('dragging');
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+          saveState();
+        };
+
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      });
+
+      // Inline edits
+      titleEl.addEventListener('input', () => { note.title = titleEl.innerText; saveState(); });
+      bodyEl.addEventListener('input', () => { note.body = bodyEl.innerText; saveState(); });
+
+      // Theme Pickers
+      card.querySelectorAll('.theme-picker').forEach(p => {
+        p.addEventListener('click', (e) => {
+          const selectedTheme = e.target.dataset.theme;
+          note.theme = selectedTheme;
+          card.className = `note-card theme-${selectedTheme}`;
+          saveState();
+        });
+      });
+
+      // Upvoting / Liking
+      likeBtn.addEventListener('click', () => {
+        note.likes = (note.likes || 0) + 1;
+        card.querySelector('.like-count').textContent = note.likes;
+        likeBtn.classList.add('liked');
+        saveState();
+      });
+
+      // Deletion
+      deleteBtn.addEventListener('click', () => {
+        state.notes = state.notes.filter(n => n.id !== note.id);
+        card.remove();
+        saveState();
+        showToast("Note deleted");
+      });
+    }
+
+    // ── Auto-Grid Organizer ──
+    document.getElementById('btnOrganize').addEventListener('click', () => {
+      const startX = 100;
+      const startY = 120;
+      const colWidth = 310;
+      const rowHeight = 260;
+      const maxCols = Math.max(1, Math.floor((window.innerWidth - 100) / colWidth));
+
+      state.notes.forEach((note, index) => {
+        const col = index % maxCols;
+        const row = Math.floor(index / maxCols);
+        note.x = startX + col * colWidth;
+        note.y = startY + row * rowHeight;
+      });
+
+      renderNotes();
+      saveState();
+      showToast("Arranged in grid!");
+    });
+
+    // ── Top Toolbar Actions ──
+    document.getElementById('btnNewNote').onclick = () => createNewNote();
+    document.getElementById('fabAdd').onclick = () => createNewNote();
+    boardTitle.oninput = () => saveState();
+
+    // ── Sharing & Export Options ──
+    btnShare.onclick = () => shareModal.classList.add('open');
+    closeShare.onclick = () => shareModal.classList.remove('open');
+    shareModal.onclick = (e) => { if (e.target === shareModal) shareModal.classList.remove('open'); };
+
+    // 1. Copy Snapshot Link via URL Hash (Zero-backend collaboration!)
+    btnCopyUrl.onclick = () => {
+      const payload = btoa(encodeURIComponent(JSON.stringify(state)));
+      const url = `${window.location.origin}${window.location.pathname}#${payload}`;
+      navigator.clipboard.writeText(url).then(() => {
+        showToast("Snapshot URL copied to clipboard!");
+        shareModal.classList.remove('open');
+      });
+    };
+
+    // 2. Download JSON
+    btnDownloadJson.onclick = () => {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${state.title.toLowerCase().replace(/\s+/g, '_')}_board.json`;
+      a.click();
+    };
+
+    // 3. Import JSON
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          if (imported && Array.isArray(imported.notes)) {
+            state = imported;
+            boardTitle.value = state.title || "Imported Board";
+            renderNotes();
+            updateTransform();
+            saveState();
+            shareModal.classList.remove('open');
+            showToast("Board imported successfully!");
+          }
+        } catch (err) {
+          alert("Invalid board JSON file.");
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    // 4. Reset
+    btnResetBoard.onclick = () => {
+      if (confirm("Are you sure you want to delete all notes on this canvas?")) {
+        state.notes = [];
+        renderNotes();
+        saveState();
+        shareModal.classList.remove('open');
+        showToast("Canvas cleared.");
+      }
+    };
+
+    // ── Helpers ──
+    function escapeHTML(str) {
+      if (!str) return "";
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    function timeAgo(date) {
+      const seconds = Math.floor((Date.now() - date) / 1000);
+      if (seconds < 60) return "just now";
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      return `${Math.floor(hours / 24)}d ago`;
+    }
+
+    // ── Initial Mount ──
+    loadIdentity();
+    loadState();
+    boardTitle.value = state.title || "Collaborative Canvas";
+    updateTransform();
+    renderNotes();
+  </script>
+</body>
+</html>
