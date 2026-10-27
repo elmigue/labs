@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Forge: Logistic Regression & Regularisation</title>
+    <!-- Load Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --bg-panel: #1a1525;
+            --text-main: #e0e0e0;
+            --accent: #ff4081; /* Electric Magenta theme for Classification/Regularisation */
+            --success: #00e676;
+            --danger: #ff1744;
+            --warning: #ffea00;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: #0d0a14;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 25% 50% 25%;
+            flex-grow: 1;
+            height: calc(100vh - 50px);
+        }
+
+        .panel {
+            background-color: var(--bg-panel);
+            margin: 5px;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-y: auto;
+            border: 1px solid #33294a;
+        }
+
+        /* Central Column Split */
+        .center-col {
+            display: flex;
+            flex-direction: column;
+            margin: 5px;
+        }
+        .center-top {
+            flex: 2;
+            background-color: var(--bg-panel);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #33294a;
+        }
+        .center-bottom {
+            flex: 1;
+            background-color: #000;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-y: auto;
+            border: 1px solid #33294a;
+        }
+
+        /* Code Editor Simulation */
+        textarea {
+            width: 100%;
+            height: 100%;
+            background-color: #171221;
+            color: #ff80ab;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 15px;
+            border: none;
+            padding: 15px;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+            line-height: 1.5;
+        }
+
+        h2, h3 { margin-top: 0; color: var(--accent); }
+        
+        button {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #f50057; color: #fff;}
+        button:disabled { background-color: #333; cursor: not-allowed; color: #666; }
+
+        .btn-run { width: 100%; font-size: 16px; padding: 12px; background-color: var(--success); color: #000;}
+        .btn-run:hover { background-color: #69f0ae; }
+        
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-danger:hover { background-color: #d50000; }
+
+        .hint-box, .food-box {
+            background-color: #241c36;
+            padding: 12px;
+            border-left: 4px solid var(--warning);
+            margin-top: 10px;
+            font-size: 0.95em;
+            display: none;
+            border-radius: 0 4px 4px 0;
+        }
+        .food-box { border-left-color: var(--accent); }
+
+        .status { padding: 12px; border-radius: 4px; margin-bottom: 10px; display: none; font-weight: 500;}
+        .status.success { background-color: rgba(0, 230, 118, 0.15); border: 1px solid var(--success); display: block; color: var(--success);}
+        .status.error { background-color: rgba(255, 23, 68, 0.15); border: 1px solid var(--danger); display: block; color: var(--danger);}
+
+        #console-output { white-space: pre-wrap; color: #e0e0e0; margin:0;}
+        .system-msg { color: #888; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>DAIS Web Tutor:</strong> Logistic Regression & Regularisation</div>
+        <div>XP Score: <span id="score">0</span>/400 | Level: ML Architect</div>
+        <button class="btn-danger" onclick="resetGame()">System Reset</button>
+    </header>
+
+    <div class="container">
+        <!-- LEFT PANEL: Instructions & Hints -->
+        <div class="panel">
+            <h2>Mission Briefing</h2>
+            <h3 id="ex-title">Loading Environment...</h3>
+            <p><strong>Threshold Concept:</strong> <span id="ex-concept">...</span></p>
+            <p id="ex-desc" style="line-height: 1.6;">Initializing Pyodide and allocating NumPy C-extensions. Please wait...</p>
+            
+            <button id="btn-hint" onclick="showHint()" disabled>Request Hint</button>
+            <div id="hint-box" class="hint-box"></div>
+
+            <div id="food-box" class="food-box">
+                <strong>Algorithmic Insight:</strong>
+                <p id="ex-food" style="margin-bottom:0;"></p>
+            </div>
+        </div>
+
+        <!-- CENTER PANEL: IDE and Console -->
+        <div class="center-col">
+            <div class="center-top">
+                <textarea id="code-editor" spellcheck="false" disabled># Establishing compute environment...</textarea>
+            </div>
+            <button id="btn-run" class="btn-run" onclick="runCode()" disabled>Execute Optimisation (▶)</button>
+            <div class="center-bottom">
+                <pre id="console-output"><span class="system-msg">System Console Output...</span></pre>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Feedback & Progression -->
+        <div class="panel">
+            <h2>Telemetry & Feedback</h2>
+            <div id="feedback-status">Waiting for execution...</div>
+            <p>Attempts: <span id="attempt-count">0</span>/3</p>
+            
+            <button id="btn-next" onclick="nextExercise()" style="display:none; width: 100%;">Next Concept >></button>
+            
+            <hr style="border-color: #33294a; margin: 25px 0;">
+            <p style="font-size: 0.85em; color: #aaa; line-height: 1.5;">
+                <strong>The Unification Rule:</strong> The gradient descent algorithm requires zero modifications to switch from Linear to Logistic regression. Only the prediction function and loss change.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let pyodideReady = false;
+        let pyodide = null;
+        
+        let currentLevel = 0;
+        let attempts = 0;
+        let score = 0;
+
+        // --- EXERCISE DATABASE ---
+        const exercises = [
+            {
+                title: "Ex 1: Numerical Stability",
+                concept: "The Sigmoid Overflow Trap",
+                desc: "An LLM wrote this `sigmoid` function. For extreme negative values of `z` (e.g., -1000), `np.exp(-z)` tries to calculate `e^1000`, which overflows standard 64-bit floats and crashes the pipeline. Fix the code using `np.clip()`.",
+                initialCode: `import numpy as np\n\ndef sigmoid(z):\n    # FIX THIS: Clip z to be between -500 and 500\n    \n    return 1 / (1 + np.exp(-z))\n\n# Test with extreme values\nz_extreme = np.array([0, 2, -1000, 1000])\nprint("Sigmoid outputs:", sigmoid(z_extreme))`,
+                testLogic: `
+assert 'clip' in userCode, "Validation Failed: You must use np.clip(z, -500, 500) to ensure numerical stability."
+test_out = sigmoid(np.array([-1000]))
+assert not np.isnan(test_out[0]), "Validation Failed: Your sigmoid returned NaN. Clip the values!"
+`,
+                hint: "Add this line before the return statement: `z = np.clip(z, -500, 500)`",
+                foodForThought: "Silent numerical overflow is a massive problem in deep learning. A professional ML Architect never assumes math functions will safely handle extreme inputs. `np.clip()` prevents the gradient from exploding or returning NaN!"
+            },
+            {
+                title: "Ex 2: The Beautiful Unification",
+                concept: "Cross-Entropy Gradient = MSE Gradient",
+                desc: "The algebraic miracle: the gradient for Logistic Regression is identical to Linear Regression! The formula is still `(1/n) * X.T @ (y_pred - y)`. You only need to apply the sigmoid function to `X @ weights` first.",
+                initialCode: `import numpy as np\n\ndef sigmoid(z):\n    return 1 / (1 + np.exp(-np.clip(z, -500, 500)))\n\ndef logistic_gradient(X, y, weights):\n    n = len(y)\n    \n    # 1. FIX THIS: Calculate predictions (squashed through sigmoid)\n    y_pred = X @ weights  \n    \n    # 2. FIX THIS: Compute the gradient (same as MSE from Week 1!)\n    grad = 0\n    \n    return grad\n\n# Dummy data\nX = np.array([[1, 2], [1, 3]])\ny = np.array([1, 0])\nw = np.array([0.0, 0.0])\nprint("Gradient:", logistic_gradient(X, y, w))`,
+                testLogic: `
+expected_grad = np.array([0.25, 0.625])
+user_grad = logistic_gradient(X, y, w)
+assert np.allclose(user_grad, expected_grad), "Validation Failed: Gradient computation is incorrect."
+assert 'sigmoid' in userCode.split('logistic_gradient')[1], "Validation Failed: You must apply the sigmoid function to X @ weights."
+`,
+                hint: "`y_pred = sigmoid(X @ weights)`. Then `grad = (1/n) * X.T @ (y_pred - y)`. It is identical to Week 1!",
+                foodForThought: "This cancellation is not accidental. Both MSE and Cross-Entropy belong to the 'Exponential Family' of distributions. This generalized mathematical structure is why one single optimisation loop can train almost any classical machine learning model."
+            },
+            {
+                title: "Ex 3: L1 & L2 Regularisation",
+                concept: "Penalising Large Weights",
+                desc: "To prevent overfitting (and fix multicollinearity), we penalise large weights. Add the L2 penalty (`lambda_l2 * w`) and the L1 penalty (`lambda_l1 * sign(w)`) to the base gradient.",
+                initialCode: `import numpy as np\n\nw = np.array([3.0, -1.5, 0.0, 2.0])\nlambda_l2 = 0.2\nlambda_l1 = 0.1\n\n# Calculate the L2 gradient term (derivative of (lambda/2)||w||^2)\nl2_term = 0  # FIX THIS\n\n# Calculate the L1 subgradient term (derivative of lambda * ||w||_1)\nl1_term = 0  # FIX THIS (use np.sign)\n\ntotal_penalty = l2_term + l1_term\nprint("Total Penalty Gradient:", total_penalty)`,
+                testLogic: `
+assert np.allclose(l2_term, [0.6, -0.3, 0.0, 0.4]), "Validation Failed: l2_term is incorrect. It should be lambda_l2 * w."
+assert np.allclose(l1_term, [0.1, -0.1, 0.0, 0.1]), "Validation Failed: l1_term is incorrect. It should be lambda_l1 * np.sign(w)."
+`,
+                hint: "`l2_term = lambda_l2 * w`. For L1, the derivative of absolute value is the sign of the number: `l1_term = lambda_l1 * np.sign(w)`.",
+                foodForThought: "Look at the 3rd weight (`0.0`). The L2 penalty for it is 0. The L1 penalty for it is also 0 (`np.sign(0)=0`). Once a weight hits exactly zero, the penalties stop pushing it. This is crucial for the next exercise!"
+            },
+            {
+                title: "Ex 4: The Sparsity Engine",
+                concept: "L1 Drives Feature Selection",
+                desc: "Why does L1 cause sparsity (weights = 0) while L2 doesn't? In practice, optimisers use 'soft thresholding' to snap tiny weights to zero if they fall below the L1 penalty. Simulate this feature selection step.",
+                initialCode: `import numpy as np\n\n# We have 100 features. Most are useless noise.\nweights = np.random.uniform(-0.5, 0.5, 100)\nlambda_l1 = 0.2\n\n# Simulate L1 Soft-Thresholding: \n# FIX THIS: Set any weight whose absolute value is LESS than lambda_l1 to exactly 0.0.\n# Hint: weights[np.abs(weights) < ...] = ...\n\n\nnon_zero_count = np.count_nonzero(weights)\nprint(f"Features kept: {non_zero_count} / 100")`,
+                testLogic: `
+assert np.all(weights[np.abs(weights) < lambda_l1] == 0.0), "Validation Failed: You did not zero out the weights smaller than lambda_l1."
+assert np.count_nonzero(weights) < 100, "Validation Failed: No weights were zeroed out."
+`,
+                hint: "Use boolean masking in NumPy: `weights[np.abs(weights) < lambda_l1] = 0.0`.",
+                foodForThought: "L1 regularisation (Lasso) performs automatic feature selection! If you have a dataset with 1,000 columns and only 10 matter, L1 will find them and delete the rest. L2 (Ridge) will just shrink all 1,000 weights but keep them active."
+            }
+        ];
+
+        // --- INITIALIZATION ---
+        async function initPyodide() {
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">Booting CPython Virtual Machine...\nLoading NumPy C-extensions...</span>';
+            try {
+                pyodide = await loadPyodide({
+                    stdout: (text) => {
+                        const out = document.getElementById('console-output');
+                        out.innerHTML += text + '\n';
+                    },
+                    stderr: (text) => {
+                        const out = document.getElementById('console-output');
+                        out.innerHTML += '<span style="color:var(--danger)">' + text + '</span>\n';
+                    }
+                });
+                
+                await pyodide.loadPackage("numpy");
+                
+                pyodideReady = true;
+                document.getElementById('code-editor').disabled = false;
+                document.getElementById('btn-run').disabled = false;
+                loadExercise(0);
+            } catch (err) {
+                document.getElementById('console-output').innerHTML = '<span style="color:var(--danger)">Failed to initialize Pyodide/NumPy. Check network connection.</span>';
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function loadExercise(index) {
+            currentLevel = index;
+            attempts = 0;
+            const ex = exercises[index];
+            
+            document.getElementById('ex-title').innerText = ex.title;
+            document.getElementById('ex-concept').innerText = ex.concept;
+            document.getElementById('ex-desc').innerText = ex.desc;
+            document.getElementById('code-editor').value = ex.initialCode;
+            
+            document.getElementById('attempt-count').innerText = attempts;
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">NumPy Backend Active. Awaiting algebraic input.</span>\n';
+            document.getElementById('feedback-status').className = 'status';
+            document.getElementById('feedback-status').innerText = 'Analyze the math and execute when ready.';
+            
+            document.getElementById('btn-hint').disabled = false;
+            document.getElementById('hint-box').style.display = 'none';
+            document.getElementById('food-box').style.display = 'none';
+            document.getElementById('btn-next').style.display = 'none';
+            document.getElementById('btn-run').style.display = 'block';
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            
+            attempts++;
+            document.getElementById('attempt-count').innerText = attempts;
+            const userCode = document.getElementById('code-editor').value;
+            const testCode = exercises[currentLevel].testLogic;
+            
+            document.getElementById('console-output').innerHTML = '';
+            const feedbackBox = document.getElementById('feedback-status');
+
+            try {
+                // To avoid variable persistence issues, run user code, then test code directly
+                await pyodide.runPythonAsync(userCode);
+                await pyodide.runPythonAsync(testCode);
+                
+                handleSuccess(feedbackBox);
+
+            } catch (err) {
+                let errorMsg = err.message;
+                
+                const pythonTraceback = errorMsg.split('File "<exec>"').pop();
+                if(pythonTraceback) {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">Traceback (most recent call last):\n  File "optimisation.py"' + pythonTraceback + '</span>\n';
+                } else {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">' + errorMsg + '</span>\n';
+                }
+
+                handleFailure(feedbackBox, errorMsg);
+            }
+        }
+
+        function handleSuccess(feedbackBox) {
+            feedbackBox.className = 'status success';
+            feedbackBox.innerHTML = '<strong>Mathematical Proof Validated!</strong> Operations match geometric expectations.';
+            
+            if(attempts <= 3) score += 100;
+            document.getElementById('score').innerText = score;
+            
+            document.getElementById('food-box').style.display = 'block';
+            document.getElementById('ex-food').innerText = exercises[currentLevel].foodForThought;
+            
+            document.getElementById('btn-run').style.display = 'none';
+            
+            if (currentLevel < exercises.length - 1) {
+                document.getElementById('btn-next').style.display = 'block';
+            } else {
+                feedbackBox.innerHTML += '<br><br><strong>Module Complete.</strong> You are prepared to build the complete Logistic Classifier in the Lab Studio.';
+            }
+        }
+
+        function handleFailure(feedbackBox, errorMsg) {
+            feedbackBox.className = 'status error';
+            if (errorMsg.includes('AssertionError')) {
+                feedbackBox.innerHTML = '<strong>Algebraic Error:</strong> Your code executed, but the math is wrong. Read the assertion in the console.';
+            } else {
+                feedbackBox.innerHTML = '<strong>Execution Error:</strong> Your Python code crashed. Read the Traceback to debug.';
+            }
+
+            if (attempts >= 3) {
+                feedbackBox.innerHTML += '<br><br><em>Maximum initial attempts reached. You may proceed to the next unit, or keep experimenting.</em>';
+                if (currentLevel < exercises.length - 1) {
+                    document.getElementById('btn-next').style.display = 'block';
+                }
+            }
+        }
+
+        function showHint() {
+            document.getElementById('hint-box').style.display = 'block';
+            document.getElementById('hint-box').innerText = "Hint: " + exercises[currentLevel].hint;
+            document.getElementById('btn-hint').disabled = true;
+        }
+
+        function nextExercise() {
+            if (currentLevel < exercises.length - 1) {
+                loadExercise(currentLevel + 1);
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            loadExercise(0);
+        }
+
+        // Start booting Pyodide on load
+        window.onload = initPyodide;
+
+    </script>
+</body>
+</html>

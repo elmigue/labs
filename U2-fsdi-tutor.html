@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Forge: Probability & Simulation Web Tutor</title>
+    <!-- Load Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0f0f1a;
+            --bg-panel: #1a1a2e;
+            --text-main: #e0e0e0;
+            --accent: #b388ff; /* Soft purple theme for Probability */
+            --success: #69f0ae;
+            --danger: #ff5252;
+            --warning: #ffd740;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: #07070f;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 25% 50% 25%;
+            flex-grow: 1;
+            height: calc(100vh - 50px);
+        }
+
+        .panel {
+            background-color: var(--bg-panel);
+            margin: 5px;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-y: auto;
+            border: 1px solid #2d2d44;
+        }
+
+        /* Central Column Split */
+        .center-col {
+            display: flex;
+            flex-direction: column;
+            margin: 5px;
+        }
+        .center-top {
+            flex: 2;
+            background-color: var(--bg-panel);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #2d2d44;
+        }
+        .center-bottom {
+            flex: 1;
+            background-color: #000;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-y: auto;
+            border: 1px solid #2d2d44;
+        }
+
+        /* Code Editor Simulation */
+        textarea {
+            width: 100%;
+            height: 100%;
+            background-color: #161625;
+            color: #c792ea;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14.5px;
+            border: none;
+            padding: 15px;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+            line-height: 1.5;
+        }
+
+        h2, h3 { margin-top: 0; color: var(--accent); }
+        
+        button {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #d1c4e9; }
+        button:disabled { background-color: #333; cursor: not-allowed; color: #666; }
+
+        .btn-run { width: 100%; font-size: 16px; padding: 12px; background-color: var(--success); color: #000;}
+        .btn-run:hover { background-color: #00e676; }
+        
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-danger:hover { background-color: #d50000; }
+
+        .hint-box, .food-box {
+            background-color: #232338;
+            padding: 12px;
+            border-left: 4px solid var(--warning);
+            margin-top: 10px;
+            font-size: 0.95em;
+            display: none;
+            border-radius: 0 4px 4px 0;
+        }
+        .food-box { border-left-color: var(--accent); }
+
+        .status { padding: 12px; border-radius: 4px; margin-bottom: 10px; display: none; font-weight: 500;}
+        .status.success { background-color: rgba(105, 240, 174, 0.15); border: 1px solid var(--success); display: block; color: var(--success);}
+        .status.error { background-color: rgba(255, 82, 82, 0.15); border: 1px solid var(--danger); display: block; color: var(--danger);}
+
+        #console-output { white-space: pre-wrap; color: #e0e0e0; margin:0;}
+        .system-msg { color: #828282; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>DAIS Web Tutor:</strong> Probability & Monte Carlo Simulation</div>
+        <div>XP Score: <span id="score">0</span>/400 | Level: Probabilist</div>
+        <button class="btn-danger" onclick="resetGame()">System Reset</button>
+    </header>
+
+    <div class="container">
+        <!-- LEFT PANEL: Instructions & Hints -->
+        <div class="panel">
+            <h2>Mission Briefing</h2>
+            <h3 id="ex-title">Loading Environment...</h3>
+            <p><strong>Threshold Concept:</strong> <span id="ex-concept">...</span></p>
+            <p id="ex-desc" style="line-height: 1.6;">Initializing Pyodide and downloading NumPy & SciPy binaries. This takes a moment...</p>
+            
+            <button id="btn-hint" onclick="showHint()" disabled>Request Hint</button>
+            <div id="hint-box" class="hint-box"></div>
+
+            <div id="food-box" class="food-box">
+                <strong>Statistical Insight:</strong>
+                <p id="ex-food" style="margin-bottom:0;"></p>
+            </div>
+        </div>
+
+        <!-- CENTER PANEL: IDE and Console -->
+        <div class="center-col">
+            <div class="center-top">
+                <textarea id="code-editor" spellcheck="false" disabled># Establishing compute environment...</textarea>
+            </div>
+            <button id="btn-run" class="btn-run" onclick="runCode()" disabled>Execute Simulation (▶)</button>
+            <div class="center-bottom">
+                <pre id="console-output"><span class="system-msg">System Console Output...</span></pre>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Feedback & Progression -->
+        <div class="panel">
+            <h2>Telemetry & Feedback</h2>
+            <div id="feedback-status">Waiting for execution...</div>
+            <p>Attempts: <span id="attempt-count">0</span>/3</p>
+            
+            <button id="btn-next" onclick="nextExercise()" style="display:none; width: 100%;">Next Concept >></button>
+            
+            <hr style="border-color: #2d2d44; margin: 25px 0;">
+            <p style="font-size: 0.85em; color: #a1a1aa; line-height: 1.5;">
+                <strong>The Law of Uncertainty:</strong> Probability is the language we use to quantify our lack of knowledge. Master the distributions, and you master the model.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let pyodideReady = false;
+        let pyodide = null;
+        
+        let currentLevel = 0;
+        let attempts = 0;
+        let score = 0;
+
+        // --- EXERCISE DATABASE ---
+        const exercises = [
+            {
+                title: "Ex 1: The Base Rate Fallacy",
+                concept: "Bayes' Theorem & Conditional Probability",
+                desc: "Among incoming emails, 25% are spam. A filter correctly catches 92% of spam, but incorrectly flags 3% of legitimate emails. Using Bayes' Theorem, compute the probability that an email is actually spam, given that it was flagged. Calculate `p_flag` first, then `p_spam_given_flag`.",
+                initialCode: `p_spam = 0.25\np_legit = 0.75\np_flag_given_spam = 0.92\np_flag_given_legit = 0.03\n\n# 1. Calculate the total probability of being flagged (Law of Total Probability)\np_flag = 0.0  \n\n# 2. Apply Bayes' Theorem\np_spam_given_flag = 0.0  \n\nprint(f"Total % flagged: {p_flag:.4f}")\nprint(f"P(Spam | Flagged): {p_spam_given_flag:.4f}")`,
+                testLogic: `
+assert abs(p_flag - 0.2525) < 0.0001, "Validation Failed: p_flag is incorrect. P(flag) = P(flag|spam)*P(spam) + P(flag|legit)*P(legit)"
+assert abs(p_spam_given_flag - 0.91089) < 0.001, "Validation Failed: p_spam_given_flag is incorrect. Use Bayes: P(flag|spam)*P(spam) / P(flag)"
+`,
+                hint: "Law of total probability for `p_flag`: Multiply the chance of catching spam by the spam rate, and add it to the chance of falsely flagging legit emails multiplied by the legit rate.",
+                foodForThought: "Even with a 3% false positive rate, if the filter flags an email, it's 91% likely to be spam! Compare this to the medical example in the lecture: because spam is relatively common (25% base rate vs 1% disease base rate), the positive predictive value remains very high. Base rates dominate Bayesian updates."
+            },
+            {
+                title: "Ex 2: The Factory Line",
+                concept: "Discrete Distributions (Binomial vs Poisson)",
+                desc: "A QC inspector checks 20 items. Each has a 5% chance of being defective independently. Since n is fixed and outcomes are binary, this is a Binomial distribution. Use `scipy.stats.binom` to calculate the exact probability of finding exactly 2 defective items.",
+                initialCode: `from scipy import stats\n\nn = 20      # number of trials\np = 0.05    # probability of success (defect)\n\n# Use stats.binom.pmf(k, n, p) to find the probability of exactly k=2 defects\np_exactly_two = 0.0\n\nprint(f"Probability of exactly 2 defects: {p_exactly_two:.4f}")`,
+                testLogic: `
+assert 'stats.binom' in userCode or 'math.comb' in userCode, "Validation Failed: You must use scipy.stats.binom or math.comb"
+assert abs(p_exactly_two - 0.1886) < 0.001, "Validation Failed: The probability should be roughly 0.1886"
+`,
+                hint: "The PMF (Probability Mass Function) is used for EXACT values in discrete distributions. Use `stats.binom.pmf(2, n, p)`.",
+                foodForThought: "What if the inspector was checking a continuous stream of items, looking for a rare defect that occurs on average 1 time per hour? You would switch from a Binomial to a Poisson distribution because there is no fixed 'n'!"
+            },
+            {
+                title: "Ex 3: The Monte Carlo Casino",
+                concept: "The Law of Large Numbers (LLN)",
+                desc: "Let's prove the LLN. In a game, you roll two 6-sided dice. If the sum is > 9, you win £3. Otherwise, you lose £1. Simulate this 10,000 times using NumPy and calculate the mean payout. The theoretical expected value is -£0.333.",
+                initialCode: `import numpy as np\nrng = np.random.default_rng(42)\n\nn_trials = 10_000\n\n# 1. Roll 2 dice n_trials times. (Hint: rng.integers(1, 7, size=(n_trials, 2)))\nrolls = rng.integers(1, 7, size=(n_trials, 2))\n\n# 2. Sum the two dice for each trial\nsums = np.sum(rolls, axis=1)\n\n# 3. Create an array of payouts (3 if sum > 9, else -1). Hint: np.where()\npayouts = np.zeros(n_trials) # Fix this line\n\n# 4. Calculate the mean\nsimulated_mean = payouts.mean()\nprint(f"Simulated Mean Payout: £{simulated_mean:.3f}")`,
+                testLogic: `
+assert 'np.where' in userCode or 'if' in userCode, "Validation Failed: Use np.where(sums > 9, 3, -1) to assign payouts."
+assert abs(simulated_mean - (-0.333)) < 0.05, f"Validation Failed: Expected near -0.333, got {simulated_mean}"
+`,
+                hint: "Use `np.where(sums > 9, 3, -1)` to create the array of payouts rapidly without a slow Python for-loop.",
+                foodForThought: "You just used computation to avoid doing the theoretical expected value math! Monte Carlo simulation is a superpower: if the math is too hard to solve on paper, just simulate the process 1,000,000 times and let the Law of Large Numbers find the answer for you."
+            },
+            {
+                title: "Ex 4: Theoretical vs Empirical",
+                concept: "Probability Density Functions (PDFs)",
+                desc: "When plotting an empirical histogram against a theoretical continuous curve, you must know the exact height of the theoretical curve. Given a Normal distribution N(μ=50, σ=10), what is the exact probability density at x = 50? Use `stats.norm.pdf`.",
+                initialCode: `from scipy import stats\n\nmu = 50\nsigma = 10\nx_target = 50\n\n# Calculate the Probability Density Function value at x = 50\npdf_at_mean = 0.0\n\nprint(f"The density curve height at the mean is: {pdf_at_mean:.5f}")`,
+                testLogic: `
+assert abs(pdf_at_mean - 0.03989) < 0.0001, "Validation Failed: Use stats.norm.pdf(x_target, loc=mu, scale=sigma)"
+`,
+                hint: "For continuous distributions, use `.pdf` instead of `.pmf`. The syntax is `stats.norm.pdf(x_value, loc=mean, scale=std_dev)`.",
+                foodForThought: "The density is 0.039! Wait, why isn't it a probability between 0 and 1? Because for continuous variables, P(X=exactly 50) is ZERO. The PDF represents density (height), not probability. Probability is the AREA under the curve. This is why you must use `density=True` when making matplotlib histograms!"
+            }
+        ];
+
+        // --- INITIALIZATION ---
+        async function initPyodide() {
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">Booting CPython Virtual Machine...\nDownloading NumPy and SciPy (this may take 15-30 seconds)...</span>';
+            try {
+                pyodide = await loadPyodide({
+                    stdout: (text) => {
+                        const out = document.getElementById('console-output');
+                        out.innerHTML += text + '\n';
+                    },
+                    stderr: (text) => {
+                        const out = document.getElementById('console-output');
+                        out.innerHTML += '<span style="color:var(--danger)">' + text + '</span>\n';
+                    }
+                });
+                
+                // Load required scientific packages
+                await pyodide.loadPackage(["numpy", "scipy"]);
+                
+                pyodideReady = true;
+                document.getElementById('code-editor').disabled = false;
+                document.getElementById('btn-run').disabled = false;
+                loadExercise(0);
+            } catch (err) {
+                document.getElementById('console-output').innerHTML = '<span style="color:var(--danger)">Failed to initialize Pyodide/SciPy. Check network connection.</span>';
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function loadExercise(index) {
+            currentLevel = index;
+            attempts = 0;
+            const ex = exercises[index];
+            
+            document.getElementById('ex-title').innerText = ex.title;
+            document.getElementById('ex-concept').innerText = ex.concept;
+            document.getElementById('ex-desc').innerText = ex.desc;
+            document.getElementById('code-editor').value = ex.initialCode;
+            
+            document.getElementById('attempt-count').innerText = attempts;
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">NumPy/SciPy Backend Active. Awaiting statistical input.</span>\n';
+            document.getElementById('feedback-status').className = 'status';
+            document.getElementById('feedback-status').innerText = 'Analyze the scenario and execute when ready.';
+            
+            document.getElementById('btn-hint').disabled = false;
+            document.getElementById('hint-box').style.display = 'none';
+            document.getElementById('food-box').style.display = 'none';
+            document.getElementById('btn-next').style.display = 'none';
+            document.getElementById('btn-run').style.display = 'block';
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            
+            attempts++;
+            document.getElementById('attempt-count').innerText = attempts;
+            const userCode = document.getElementById('code-editor').value;
+            const testCode = exercises[currentLevel].testLogic;
+            
+            // Clear console
+            document.getElementById('console-output').innerHTML = '';
+            const feedbackBox = document.getElementById('feedback-status');
+
+            try {
+                // Pass user code into pyodide namespace
+                await pyodide.runPythonAsync(`userCode = """${userCode.replace(/"/g, '\\"')}"""`);
+                await pyodide.runPythonAsync(userCode);
+                await pyodide.runPythonAsync(testCode);
+                
+                // Success!
+                handleSuccess(feedbackBox);
+
+            } catch (err) {
+                let errorMsg = err.message;
+                
+                // Format traceback nicely
+                const pythonTraceback = errorMsg.split('File "<exec>"').pop();
+                if(pythonTraceback) {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">Traceback (most recent call last):\n  File "simulation.py"' + pythonTraceback + '</span>\n';
+                } else {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">' + errorMsg + '</span>\n';
+                }
+
+                handleFailure(feedbackBox, errorMsg);
+            }
+        }
+
+        function handleSuccess(feedbackBox) {
+            feedbackBox.className = 'status success';
+            feedbackBox.innerHTML = '<strong>Statistical Validation Passed!</strong> Simulation successful.';
+            
+            if(attempts <= 3) score += 100;
+            document.getElementById('score').innerText = score;
+            
+            document.getElementById('food-box').style.display = 'block';
+            document.getElementById('ex-food').innerText = exercises[currentLevel].foodForThought;
+            
+            document.getElementById('btn-run').style.display = 'none';
+            
+            if (currentLevel < exercises.length - 1) {
+                document.getElementById('btn-next').style.display = 'block';
+            } else {
+                feedbackBox.innerHTML += '<br><br><strong>Module Complete.</strong> You are prepared for the LLN Lab Studio.';
+            }
+        }
+
+        function handleFailure(feedbackBox, errorMsg) {
+            feedbackBox.className = 'status error';
+            if (errorMsg.includes('AssertionError')) {
+                feedbackBox.innerHTML = '<strong>Mathematical Error:</strong> Your code executed, but the probability calculation is incorrect. Read the assertion.';
+            } else {
+                feedbackBox.innerHTML = '<strong>Execution Error:</strong> Your Python simulation crashed. Read the Traceback to debug.';
+            }
+
+            if (attempts >= 3) {
+                feedbackBox.innerHTML += '<br><br><em>Maximum initial attempts reached. You may proceed to the next unit, or keep experimenting.</em>';
+                if (currentLevel < exercises.length - 1) {
+                    document.getElementById('btn-next').style.display = 'block';
+                }
+            }
+        }
+
+        function showHint() {
+            document.getElementById('hint-box').style.display = 'block';
+            document.getElementById('hint-box').innerText = "Hint: " + exercises[currentLevel].hint;
+            document.getElementById('btn-hint').disabled = true;
+        }
+
+        function nextExercise() {
+            if (currentLevel < exercises.length - 1) {
+                loadExercise(currentLevel + 1);
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            loadExercise(0);
+        }
+
+        // Start booting Pyodide on load
+        window.onload = initPyodide;
+
+    </script>
+</body>
+</html>

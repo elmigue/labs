@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Forge: Python Web Tutor</title>
+    <!-- Load Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --bg-panel: #1e1e1e;
+            --text-main: #e0e0e0;
+            --accent: #00d2ff;
+            --success: #4caf50;
+            --danger: #f44336;
+            --warning: #ff9800;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: #000;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 25% 50% 25%;
+            flex-grow: 1;
+            height: calc(100vh - 50px);
+        }
+
+        .panel {
+            background-color: var(--bg-panel);
+            margin: 5px;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+
+        /* Central Column Split */
+        .center-col {
+            display: flex;
+            flex-direction: column;
+            margin: 5px;
+        }
+        .center-top {
+            flex: 2;
+            background-color: var(--bg-panel);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #333;
+        }
+        .center-bottom {
+            flex: 1;
+            background-color: #000;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+
+        /* Code Editor Simulation */
+        textarea {
+            width: 100%;
+            height: 100%;
+            background-color: #2b2b2b;
+            color: #a9b7c6;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            border: none;
+            padding: 10px;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        h2, h3 { margin-top: 0; color: var(--accent); }
+        
+        button {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #00a8cc; }
+        button:disabled { background-color: #555; cursor: not-allowed; color: #888; }
+
+        .btn-run { width: 100%; font-size: 16px; padding: 12px; background-color: var(--success); color: white;}
+        .btn-run:hover { background-color: #45a049; }
+        
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-danger:hover { background-color: #da190b; }
+
+        .hint-box, .food-box {
+            background-color: #333;
+            padding: 10px;
+            border-left: 4px solid var(--warning);
+            margin-top: 10px;
+            font-size: 0.9em;
+            display: none;
+        }
+        .food-box { border-left-color: var(--accent); }
+
+        .status { padding: 10px; border-radius: 4px; margin-bottom: 10px; display: none;}
+        .status.success { background-color: rgba(76, 175, 80, 0.2); border: 1px solid var(--success); display: block;}
+        .status.error { background-color: rgba(244, 67, 54, 0.2); border: 1px solid var(--danger); display: block;}
+
+        #console-output { white-space: pre-wrap; color: #e0e0e0; margin:0;}
+        .system-msg { color: #888; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>DAIS Web Tutor:</strong> Programming & AI Orchestration</div>
+        <div>XP Score: <span id="score">0</span>/400 | Level: Architect</div>
+        <button class="btn-danger" onclick="resetGame()">System Reset</button>
+    </header>
+
+    <div class="container">
+        <!-- LEFT PANEL: Instructions & Hints -->
+        <div class="panel">
+            <h2>Mission Briefing</h2>
+            <h3 id="ex-title">Loading Environment...</h3>
+            <p><strong>Concept:</strong> <span id="ex-concept">...</span></p>
+            <p id="ex-desc">Initializing Pyodide virtual machine. Please wait...</p>
+            
+            <button id="btn-hint" onclick="showHint()" disabled>Request Hint</button>
+            <div id="hint-box" class="hint-box"></div>
+
+            <div id="food-box" class="food-box">
+                <strong>Food for Thought:</strong>
+                <p id="ex-food"></p>
+            </div>
+        </div>
+
+        <!-- CENTER PANEL: IDE and Console -->
+        <div class="center-col">
+            <div class="center-top">
+                <textarea id="code-editor" spellcheck="false" disabled># Connecting to Compute Cluster...</textarea>
+            </div>
+            <button id="btn-run" class="btn-run" onclick="runCode()" disabled>Execute Sequence (▶)</button>
+            <div class="center-bottom">
+                <pre id="console-output"><span class="system-msg">System Console Output...</span></pre>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Feedback & Progression -->
+        <div class="panel">
+            <h2>Telemetry & Feedback</h2>
+            <div id="feedback-status">Waiting for execution...</div>
+            <p>Attempts: <span id="attempt-count">0</span>/3</p>
+            
+            <button id="btn-next" onclick="nextExercise()" style="display:none;">Next Exercise >></button>
+            
+            <hr style="border-color: #333; margin: 20px 0;">
+            <p style="font-size: 0.8em; color: #888;">
+                <strong>The Fifth Teammate Protocol:</strong> AI generates code, but *you* guarantee its safety. Trace the logic. Read the errors. Master the foundations.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let pyodideReady = false;
+        let pyodide = null;
+        
+        let currentLevel = 0;
+        let attempts = 0;
+        let score = 0;
+
+        // --- EXERCISE DATABASE (Threshold Concepts) ---
+        const exercises = [
+            {
+                title: "Ex 1: The Reference Trap",
+                concept: "Memory Mutability",
+                desc: "An LLM generated code to create a backup of a dataset before modifying it. However, the 'backup' keeps changing! Fix the code so `backup_data` remains intact when `live_data` is altered.",
+                initialCode: `live_data = [1, 2, 3, 4]\n\n# The LLM wrote this line:\nbackup_data = live_data\n\n# Simulation of incoming data\nlive_data.append(99)\n\nprint("Live:", live_data)\nprint("Backup:", backup_data)`,
+                testLogic: `
+if backup_data == [1, 2, 3, 4] and live_data == [1, 2, 3, 4, 99]:
+    pass
+else:
+    raise AssertionError("Validation Failed: backup_data was mutated! It should remain [1, 2, 3, 4].")
+`,
+                hint: "Variables are labels, not containers. `backup_data = live_data` just applies a second label to the exact same list. How do you create an independent copy of a list in Python?",
+                foodForThought: "If `live_data` was a tuple `(1, 2, 3, 4)` instead of a list, would you still need to copy it? Try changing the brackets to parentheses and experimenting. Tuples are immutable!"
+            },
+            {
+                title: "Ex 2: The LEGB Trap",
+                concept: "Scope & The Call Stack",
+                desc: "An LLM tried to create a counter function. When you run it, it throws an `UnboundLocalError`. Diagnose the traceback in the console, and fix the function. Do NOT use the `global` keyword (it's bad practice). Instead, pass state as an argument and return it.",
+                initialCode: `counter = 0\n\ndef increment():\n    counter += 1\n    return counter\n\nincrement()\nprint(counter)`,
+                testLogic: `
+assert 'increment' in globals(), "Function increment must exist"
+# Test if it works purely via arguments
+try:
+    res = increment(5)
+    assert res == 6, "increment(5) should return 6"
+except TypeError:
+    raise AssertionError("Validation Failed: increment() should accept an argument and return the new value, rather than relying on global state.")
+`,
+                hint: "Because you wrote `counter += 1` inside the function, Python assumes `counter` is a LOCAL variable (LEGB rule). But it hasn't been assigned a value locally yet! Change the function signature to `def increment(current_val):`",
+                foodForThought: "Why does Python behave this way? If it implicitly guessed you meant the global variable, you might accidentally overwrite critical global data without meaning to. Explicit is better than implicit."
+            },
+            {
+                title: "Ex 3: The Comprehension Engine",
+                concept: "List Comprehensions & Purity",
+                desc: "Write a single list comprehension that processes the `raw_names` list. It should filter out names shorter than 5 characters, convert the remaining names to UPPERCASE, and store them in `clean_names`.",
+                initialCode: `raw_names = ["ada", "turing", "grace", "von", "hopper"]\n\n# Replace the [] with a list comprehension\nclean_names = []\n\nprint("Cleaned:", clean_names)`,
+                testLogic: `
+assert clean_names == ['TURING', 'GRACE', 'HOPPER'], f"Validation Failed: Expected ['TURING', 'GRACE', 'HOPPER'], got {clean_names}"
+`,
+                hint: "A list comprehension looks like this: `[expression for item in list if condition]`. Your expression should be `name.upper()`.",
+                foodForThought: "List comprehensions aren't just shorter—they are often faster because they are optimized in C by the CPython interpreter. However, nested comprehensions become unreadable. Always balance efficiency with readability."
+            },
+            {
+                title: "Ex 4: Tracing the Phantom Value",
+                concept: "Error Reading & Type Mismatches",
+                desc: "This data pipeline crashes. Read the traceback carefully. Locate the line causing the issue, identify the `TypeError`, and cast the problematic variable to an integer before multiplying.",
+                initialCode: `def clean_row(row):\n    multiplier = 10\n    # The bug is on the next line\n    return row["value"] * multiplier\n\ndata = [{"id": 1, "value": "5"}, {"id": 2, "value": "8"}]\n\nresults = [clean_row(r) for r in data]\nprint(results)`,
+                testLogic: `
+assert results == [50, 80], "Validation Failed: Output should be [50, 80]"
+`,
+                hint: "Look at the data dictionary. The values are strings ('5') not integers (5). Multiplying a string by 10 in Python just repeats the string 10 times (or throws an error depending on the math). Cast it using `int(row['value'])`.",
+                foodForThought: "In a real AI pipeline, you rarely control the incoming data schema. A professional architect uses schema validation libraries (like Pydantic) to catch these TypeErrors at the boundary, rather than letting them crash deep inside the processing logic."
+            }
+        ];
+
+        // --- INITIALIZATION ---
+        async function initPyodide() {
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">Booting CPython Virtual Machine...</span>';
+            pyodide = await loadPyodide({
+                stdout: (text) => {
+                    const out = document.getElementById('console-output');
+                    out.innerHTML += text + '\n';
+                },
+                stderr: (text) => {
+                    const out = document.getElementById('console-output');
+                    out.innerHTML += '<span style="color:var(--danger)">' + text + '</span>\n';
+                }
+            });
+            pyodideReady = true;
+            document.getElementById('code-editor').disabled = false;
+            document.getElementById('btn-run').disabled = false;
+            loadExercise(0);
+        }
+
+        // --- GAME LOGIC ---
+        function loadExercise(index) {
+            currentLevel = index;
+            attempts = 0;
+            const ex = exercises[index];
+            
+            document.getElementById('ex-title').innerText = ex.title;
+            document.getElementById('ex-concept').innerText = ex.concept;
+            document.getElementById('ex-desc').innerText = ex.desc;
+            document.getElementById('code-editor').value = ex.initialCode;
+            
+            document.getElementById('attempt-count').innerText = attempts;
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">Environment ready. Awaiting execution.</span>\n';
+            document.getElementById('feedback-status').className = 'status';
+            document.getElementById('feedback-status').innerText = 'Analyze the code and execute when ready.';
+            
+            document.getElementById('btn-hint').disabled = false;
+            document.getElementById('hint-box').style.display = 'none';
+            document.getElementById('food-box').style.display = 'none';
+            document.getElementById('btn-next').style.display = 'none';
+            document.getElementById('btn-run').style.display = 'block';
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            
+            attempts++;
+            document.getElementById('attempt-count').innerText = attempts;
+            const userCode = document.getElementById('code-editor').value;
+            const testCode = exercises[currentLevel].testLogic;
+            
+            // Clear console
+            document.getElementById('console-output').innerHTML = '';
+            const feedbackBox = document.getElementById('feedback-status');
+
+            try {
+                // Run user code first to generate their console output
+                await pyodide.runPythonAsync(userCode);
+                
+                // Run hidden test logic
+                await pyodide.runPythonAsync(userCode + '\n' + testCode);
+                
+                // Success!
+                handleSuccess(feedbackBox);
+
+            } catch (err) {
+                // Catch Tracebacks and Assertion Errors
+                let errorMsg = err.message;
+                
+                // Strip out the giant pyodide stack trace, keep the Python traceback
+                const pythonTraceback = errorMsg.split('File "<exec>"').pop();
+                if(pythonTraceback) {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">Traceback (most recent call last):\n  File "main.py"' + pythonTraceback + '</span>\n';
+                } else {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">' + errorMsg + '</span>\n';
+                }
+
+                handleFailure(feedbackBox, errorMsg);
+            }
+        }
+
+        function handleSuccess(feedbackBox) {
+            feedbackBox.className = 'status success';
+            feedbackBox.innerHTML = '<strong>Validation Passed!</strong> Code executed flawlessly.';
+            
+            if(attempts <= 3) score += 100;
+            document.getElementById('score').innerText = score;
+            
+            document.getElementById('food-box').style.display = 'block';
+            document.getElementById('ex-food').innerText = exercises[currentLevel].foodForThought;
+            
+            document.getElementById('btn-run').style.display = 'none';
+            
+            if (currentLevel < exercises.length - 1) {
+                document.getElementById('btn-next').style.display = 'block';
+            } else {
+                feedbackBox.innerHTML += '<br><br><strong>Module Complete.</strong> You are ready for the Lab Studio.';
+            }
+        }
+
+        function handleFailure(feedbackBox, errorMsg) {
+            feedbackBox.className = 'status error';
+            if (errorMsg.includes('AssertionError')) {
+                feedbackBox.innerHTML = '<strong>Logic Error:</strong> Your code ran, but the mathematical/logical output is incorrect. Read the console output.';
+            } else {
+                feedbackBox.innerHTML = '<strong>Execution Error:</strong> Your code crashed. Read the Traceback in the console bottom-up to identify the bug.';
+            }
+
+            if (attempts >= 3) {
+                feedbackBox.innerHTML += '<br><br><em>Maximum initial attempts reached. You may proceed to the next unit, or keep experimenting.</em>';
+                if (currentLevel < exercises.length - 1) {
+                    document.getElementById('btn-next').style.display = 'block';
+                }
+            }
+        }
+
+        function showHint() {
+            document.getElementById('hint-box').style.display = 'block';
+            document.getElementById('hint-box').innerText = "Hint: " + exercises[currentLevel].hint;
+            document.getElementById('btn-hint').disabled = true;
+        }
+
+        function nextExercise() {
+            if (currentLevel < exercises.length - 1) {
+                loadExercise(currentLevel + 1);
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            loadExercise(0);
+        }
+
+        // Start booting Pyodide on load
+        window.onload = initPyodide;
+
+    </script>
+</body>
+</html>

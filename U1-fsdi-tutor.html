@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Forge: Linear Algebra Web Tutor</title>
+    <!-- Load Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0a0a1a;
+            --bg-panel: #14142b;
+            --text-main: #e2e2e2;
+            --accent: #00e5ff; /* Cyan theme for Math/Stats */
+            --success: #00e676;
+            --danger: #ff1744;
+            --warning: #ffea00;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: #050510;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 25% 50% 25%;
+            flex-grow: 1;
+            height: calc(100vh - 50px);
+        }
+
+        .panel {
+            background-color: var(--bg-panel);
+            margin: 5px;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-y: auto;
+            border: 1px solid #2a2a4a;
+        }
+
+        /* Central Column Split */
+        .center-col {
+            display: flex;
+            flex-direction: column;
+            margin: 5px;
+        }
+        .center-top {
+            flex: 2;
+            background-color: var(--bg-panel);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #2a2a4a;
+        }
+        .center-bottom {
+            flex: 1;
+            background-color: #000;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-y: auto;
+            border: 1px solid #2a2a4a;
+        }
+
+        /* Code Editor Simulation */
+        textarea {
+            width: 100%;
+            height: 100%;
+            background-color: #1e1e3f;
+            color: #80cbc4;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 15px;
+            border: none;
+            padding: 15px;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+            line-height: 1.5;
+        }
+
+        h2, h3 { margin-top: 0; color: var(--accent); }
+        
+        button {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #18ffff; }
+        button:disabled { background-color: #333; cursor: not-allowed; color: #666; }
+
+        .btn-run { width: 100%; font-size: 16px; padding: 12px; background-color: var(--success); color: #000;}
+        .btn-run:hover { background-color: #69f0ae; }
+        
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-danger:hover { background-color: #d50000; }
+
+        .hint-box, .food-box {
+            background-color: #1a1a3a;
+            padding: 12px;
+            border-left: 4px solid var(--warning);
+            margin-top: 10px;
+            font-size: 0.95em;
+            display: none;
+            border-radius: 0 4px 4px 0;
+        }
+        .food-box { border-left-color: var(--accent); }
+
+        .status { padding: 12px; border-radius: 4px; margin-bottom: 10px; display: none; font-weight: 500;}
+        .status.success { background-color: rgba(0, 230, 118, 0.15); border: 1px solid var(--success); display: block; color: #69f0ae;}
+        .status.error { background-color: rgba(255, 23, 68, 0.15); border: 1px solid var(--danger); display: block; color: #ff5252;}
+
+        #console-output { white-space: pre-wrap; color: #b2ebf2; margin:0;}
+        .system-msg { color: #546e7a; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>DAIS Web Tutor:</strong> The Geometry of Data (Linear Algebra)</div>
+        <div>XP Score: <span id="score">0</span>/400 | Level: Statistician</div>
+        <button class="btn-danger" onclick="resetGame()">System Reset</button>
+    </header>
+
+    <div class="container">
+        <!-- LEFT PANEL: Instructions & Hints -->
+        <div class="panel">
+            <h2>Mission Briefing</h2>
+            <h3 id="ex-title">Loading Environment...</h3>
+            <p><strong>Threshold Concept:</strong> <span id="ex-concept">...</span></p>
+            <p id="ex-desc" style="line-height: 1.6;">Initializing Pyodide and downloading NumPy binaries. Please wait...</p>
+            
+            <button id="btn-hint" onclick="showHint()" disabled>Request Hint</button>
+            <div id="hint-box" class="hint-box"></div>
+
+            <div id="food-box" class="food-box">
+                <strong>Geometric Insight:</strong>
+                <p id="ex-food" style="margin-bottom:0;"></p>
+            </div>
+        </div>
+
+        <!-- CENTER PANEL: IDE and Console -->
+        <div class="center-col">
+            <div class="center-top">
+                <textarea id="code-editor" spellcheck="false" disabled># Connecting to Compute Cluster...</textarea>
+            </div>
+            <button id="btn-run" class="btn-run" onclick="runCode()" disabled>Execute Mathematics (▶)</button>
+            <div class="center-bottom">
+                <pre id="console-output"><span class="system-msg">System Console Output...</span></pre>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Feedback & Progression -->
+        <div class="panel">
+            <h2>Telemetry & Feedback</h2>
+            <div id="feedback-status">Waiting for execution...</div>
+            <p>Attempts: <span id="attempt-count">0</span>/3</p>
+            
+            <button id="btn-next" onclick="nextExercise()" style="display:none; width: 100%;">Next Concept >></button>
+            
+            <hr style="border-color: #2a2a4a; margin: 25px 0;">
+            <p style="font-size: 0.85em; color: #8a8aab; line-height: 1.5;">
+                <strong>The Geometric Rule:</strong> Statistics is not just formulas; it is shapes in space. Variables are vectors. Covariance is an inner product. The dataset is a point cloud.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let pyodideReady = false;
+        let pyodide = null;
+        
+        let currentLevel = 0;
+        let attempts = 0;
+        let score = 0;
+
+        // --- EXERCISE DATABASE (Linear Algebra Threshold Concepts) ---
+        const exercises = [
+            {
+                title: "Ex 1: Transformations vs Scalars",
+                concept: "NumPy Matrix vs Element-wise Operations",
+                desc: "An LLM confused element-wise squaring with matrix multiplication. Matrix A is a 2x2 matrix. Compute its element-wise square (squaring each number individually) and its true matrix square (A multiplied by A).",
+                initialCode: `import numpy as np\n\nA = np.array([[1, 2],\n              [3, 4]])\n\n# Fix the two variables below:\nelement_sq = A  # Should be [[1, 4], [9, 16]]\nmatrix_sq = A   # Should be [[7, 10], [15, 22]]\n\nprint("Element-wise:\\n", element_sq)\nprint("Matrix Mult:\\n", matrix_sq)`,
+                testLogic: `
+assert np.array_equal(element_sq, A * A), "Validation Failed: element_sq is incorrect. Use the * operator or **2."
+assert np.array_equal(matrix_sq, A @ A), "Validation Failed: matrix_sq is incorrect. Use the @ operator for matrix multiplication."
+`,
+                hint: "In NumPy, the `*` operator performs element-wise multiplication. The `@` operator performs true matrix multiplication (dot products of rows and columns).",
+                foodForThought: "Element-wise squaring just changes the numbers. Matrix squaring physically transforms space, projecting coordinates onto new axes defined by the matrix itself. In deep learning, neural network layers are sequences of `@` operations, not `*` operations!"
+            },
+            {
+                title: "Ex 2: The Geometry of Alignment",
+                concept: "Dot Products and Orthogonality",
+                desc: "You have two vectors representing variables in space: u and v. Compute their dot product. If the dot product is 0, what does that tell you about the angle between them?",
+                initialCode: `import numpy as np\n\nu = np.array([3, -2])\nv = np.array([4, 6])\n\n# Compute the dot product of u and v\ndot_prod = 0 \n\nprint(f"The dot product is: {dot_prod}")`,
+                testLogic: `
+expected_dot = np.dot(np.array([3, -2]), np.array([4, 6]))
+assert dot_prod == expected_dot, f"Validation Failed: Expected {expected_dot}, got {dot_prod}"
+`,
+                hint: "You can compute a dot product using `np.dot(u, v)`, the `@` operator (`u @ v`), or by multiplying them element-wise and summing the result `np.sum(u * v)`.",
+                foodForThought: "Because the dot product is 0, the angle between these vectors is exactly 90 degrees (cos(90°) = 0). In statistics, if two centered variables have a dot product of 0, their covariance is 0. They are perfectly uncorrelated!"
+            },
+            {
+                title: "Ex 3: The Engine of Statistics",
+                concept: "Covariance Matrix Construction from Scratch",
+                desc: "Calculate the covariance matrix Σ by hand using the matrix formula: Σ = (1/n) * X̃ᵀX̃. First, find the centered data matrix (X̃) by subtracting the column means. Then apply the matrix multiplication.",
+                initialCode: `import numpy as np\n\nX = np.array([[10, 2], \n              [20, 4], \n              [30, 6], \n              [40, 8]])\nn = len(X)\n\n# 1. Center the data\nX_centred = X - 0  # Fix this to subtract column means\n\n# 2. Compute covariance matrix using matrix multiplication\nSigma = X_centred  # Apply the formula: (1/n) * X̃ᵀX̃\n\nprint("Manual Covariance Matrix:\\n", Sigma)`,
+                testLogic: `
+assert np.allclose(X_centred.mean(axis=0), [0, 0]), "Validation Failed: X_centred is incorrect. The mean of each column must be 0."
+expected_sigma = (1/n) * (X_centred.T @ X_centred)
+assert np.allclose(Sigma, expected_sigma), "Validation Failed: Sigma is incorrect. Did you transpose X_centred before multiplying?"
+assert np.allclose(Sigma, np.cov(X.T, bias=True)), "Validation Failed: Your manual matrix does not match NumPy's internal np.cov function!"
+`,
+                hint: "To center the data, use `X - np.mean(X, axis=0)`. For the matrix multiplication, you need the transpose of X_centred multiplied by X_centred: `(1/n) * (X_centred.T @ X_centred)`.",
+                foodForThought: "Look at the off-diagonal value in your matrix (25). It is positive, meaning X1 and X2 grow together. You just proved that the standard statistical formula for covariance is actually just a normalised dot product of two vectors!"
+            },
+            {
+                title: "Ex 4: The Singularity",
+                concept: "Determinants and Perfect Collinearity",
+                desc: "Using the same covariance matrix from Exercise 3, compute its determinant using `np.linalg.det()`. What happens when two variables contain exactly the same information?",
+                initialCode: `import numpy as np\n\n# The covariance matrix you just built:\nSigma = np.array([[125,  25],\n                  [ 25,   5]])\n\n# Compute the determinant\ndet_sigma = 100 \n\nprint(f"Determinant of Covariance Matrix: {det_sigma}")`,
+                testLogic: `
+assert np.isclose(det_sigma, 0, atol=1e-10), "Validation Failed: The determinant should be mathematically 0."
+`,
+                hint: "Use `np.linalg.det(Sigma)`. The determinant is the 'volume' of the shape encoded by the matrix.",
+                foodForThought: "The determinant is 0! Why? Because column 2 is exactly column 1 divided by 5. The data doesn't form a 2D cloud; it forms a flat 1D line. The 'volume' of a line in 2D space is zero. This is called 'perfect multicollinearity'. If you feed this into an OLS regression algorithm, the matrix inversion will crash!"
+            }
+        ];
+
+        // --- INITIALIZATION ---
+        async function initPyodide() {
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">Booting CPython Virtual Machine...\nLoading NumPy C-extensions...</span>';
+            try {
+                pyodide = await loadPyodide({
+                    stdout: (text) => {
+                        const out = document.getElementById('console-output');
+                        out.innerHTML += text + '\n';
+                    },
+                    stderr: (text) => {
+                        const out = document.getElementById('console-output');
+                        out.innerHTML += '<span style="color:var(--danger)">' + text + '</span>\n';
+                    }
+                });
+                
+                // Critcal: Load NumPy package before allowing execution
+                await pyodide.loadPackage("numpy");
+                
+                pyodideReady = true;
+                document.getElementById('code-editor').disabled = false;
+                document.getElementById('btn-run').disabled = false;
+                loadExercise(0);
+            } catch (err) {
+                document.getElementById('console-output').innerHTML = '<span style="color:var(--danger)">Failed to initialize Pyodide/NumPy. Check network connection.</span>';
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function loadExercise(index) {
+            currentLevel = index;
+            attempts = 0;
+            const ex = exercises[index];
+            
+            document.getElementById('ex-title').innerText = ex.title;
+            document.getElementById('ex-concept').innerText = ex.concept;
+            document.getElementById('ex-desc').innerText = ex.desc;
+            document.getElementById('code-editor').value = ex.initialCode;
+            
+            document.getElementById('attempt-count').innerText = attempts;
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">NumPy Backend Active. Awaiting algebraic input.</span>\n';
+            document.getElementById('feedback-status').className = 'status';
+            document.getElementById('feedback-status').innerText = 'Analyze the math and execute when ready.';
+            
+            document.getElementById('btn-hint').disabled = false;
+            document.getElementById('hint-box').style.display = 'none';
+            document.getElementById('food-box').style.display = 'none';
+            document.getElementById('btn-next').style.display = 'none';
+            document.getElementById('btn-run').style.display = 'block';
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            
+            attempts++;
+            document.getElementById('attempt-count').innerText = attempts;
+            const userCode = document.getElementById('code-editor').value;
+            const testCode = exercises[currentLevel].testLogic;
+            
+            // Clear console
+            document.getElementById('console-output').innerHTML = '';
+            const feedbackBox = document.getElementById('feedback-status');
+
+            try {
+                // To prevent variables from bleeding over cleanly, we wrap in a local namespace execution if needed,
+                // but for this simple tutor, running consecutively in global space is fine, as long as we run user code then test code.
+                await pyodide.runPythonAsync(userCode);
+                await pyodide.runPythonAsync(userCode + '\n' + testCode);
+                
+                // Success!
+                handleSuccess(feedbackBox);
+
+            } catch (err) {
+                let errorMsg = err.message;
+                
+                // Format traceback nicely
+                const pythonTraceback = errorMsg.split('File "<exec>"').pop();
+                if(pythonTraceback) {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">Traceback (most recent call last):\n  File "matrix_ops.py"' + pythonTraceback + '</span>\n';
+                } else {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">' + errorMsg + '</span>\n';
+                }
+
+                handleFailure(feedbackBox, errorMsg);
+            }
+        }
+
+        function handleSuccess(feedbackBox) {
+            feedbackBox.className = 'status success';
+            feedbackBox.innerHTML = '<strong>Mathematical Proof Validated!</strong> Operations match geometric expectations.';
+            
+            if(attempts <= 3) score += 100;
+            document.getElementById('score').innerText = score;
+            
+            document.getElementById('food-box').style.display = 'block';
+            document.getElementById('ex-food').innerText = exercises[currentLevel].foodForThought;
+            
+            document.getElementById('btn-run').style.display = 'none';
+            
+            if (currentLevel < exercises.length - 1) {
+                document.getElementById('btn-next').style.display = 'block';
+            } else {
+                feedbackBox.innerHTML += '<br><br><strong>Module Complete.</strong> You are prepared to derive Covariance in the Lab Studio.';
+            }
+        }
+
+        function handleFailure(feedbackBox, errorMsg) {
+            feedbackBox.className = 'status error';
+            if (errorMsg.includes('AssertionError')) {
+                feedbackBox.innerHTML = '<strong>Algebraic Error:</strong> Your code executed, but the math is wrong. Read the assertion in the console.';
+            } else {
+                feedbackBox.innerHTML = '<strong>Execution Error:</strong> Your Python code crashed. Read the Traceback to debug.';
+            }
+
+            if (attempts >= 3) {
+                feedbackBox.innerHTML += '<br><br><em>Maximum initial attempts reached. You may proceed to the next unit, or keep experimenting.</em>';
+                if (currentLevel < exercises.length - 1) {
+                    document.getElementById('btn-next').style.display = 'block';
+                }
+            }
+        }
+
+        function showHint() {
+            document.getElementById('hint-box').style.display = 'block';
+            document.getElementById('hint-box').innerText = "Hint: " + exercises[currentLevel].hint;
+            document.getElementById('btn-hint').disabled = true;
+        }
+
+        function nextExercise() {
+            if (currentLevel < exercises.length - 1) {
+                loadExercise(currentLevel + 1);
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            loadExercise(0);
+        }
+
+        // Start booting Pyodide on load
+        window.onload = initPyodide;
+
+    </script>
+</body>
+</html>

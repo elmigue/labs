@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Forge: Python Web Tutor (Week 2)</title>
+    <!-- Load Pyodide for in-browser Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --bg-panel: #1e1e1e;
+            --text-main: #e0e0e0;
+            --accent: #ffb74d; /* Changed to amber for Week 2 theme */
+            --success: #4caf50;
+            --danger: #f44336;
+            --warning: #ff9800;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: #000;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 25% 50% 25%;
+            flex-grow: 1;
+            height: calc(100vh - 50px);
+        }
+
+        .panel {
+            background-color: var(--bg-panel);
+            margin: 5px;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+
+        /* Central Column Split */
+        .center-col {
+            display: flex;
+            flex-direction: column;
+            margin: 5px;
+        }
+        .center-top {
+            flex: 2;
+            background-color: var(--bg-panel);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #333;
+        }
+        .center-bottom {
+            flex: 1;
+            background-color: #000;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+
+        /* Code Editor Simulation */
+        textarea {
+            width: 100%;
+            height: 100%;
+            background-color: #2b2b2b;
+            color: #a9b7c6;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            border: none;
+            padding: 10px;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+            line-height: 1.5;
+        }
+
+        h2, h3 { margin-top: 0; color: var(--accent); }
+        
+        button {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: 0.2s;
+        }
+        button:hover { background-color: #ffa726; }
+        button:disabled { background-color: #555; cursor: not-allowed; color: #888; }
+
+        .btn-run { width: 100%; font-size: 16px; padding: 12px; background-color: var(--success); color: white;}
+        .btn-run:hover { background-color: #45a049; }
+        
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-danger:hover { background-color: #da190b; }
+
+        .hint-box, .food-box {
+            background-color: #333;
+            padding: 10px;
+            border-left: 4px solid var(--warning);
+            margin-top: 10px;
+            font-size: 0.9em;
+            display: none;
+        }
+        .food-box { border-left-color: var(--accent); }
+
+        .status { padding: 10px; border-radius: 4px; margin-bottom: 10px; display: none;}
+        .status.success { background-color: rgba(76, 175, 80, 0.2); border: 1px solid var(--success); display: block;}
+        .status.error { background-color: rgba(244, 67, 54, 0.2); border: 1px solid var(--danger); display: block;}
+
+        #console-output { white-space: pre-wrap; color: #e0e0e0; margin:0;}
+        .system-msg { color: #888; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>DAIS Web Tutor:</strong> Week 2 - Data Structures & Safe Pipelines</div>
+        <div>XP Score: <span id="score">0</span>/400 | Level: Integrator</div>
+        <button class="btn-danger" onclick="resetGame()">System Reset</button>
+    </header>
+
+    <div class="container">
+        <!-- LEFT PANEL: Instructions & Hints -->
+        <div class="panel">
+            <h2>Mission Briefing</h2>
+            <h3 id="ex-title">Loading Environment...</h3>
+            <p><strong>Threshold Concept:</strong> <span id="ex-concept">...</span></p>
+            <p id="ex-desc">Initializing Pyodide virtual machine. Please wait...</p>
+            
+            <button id="btn-hint" onclick="showHint()" disabled>Request Hint</button>
+            <div id="hint-box" class="hint-box"></div>
+
+            <div id="food-box" class="food-box">
+                <strong>Food for Thought:</strong>
+                <p id="ex-food"></p>
+            </div>
+        </div>
+
+        <!-- CENTER PANEL: IDE and Console -->
+        <div class="center-col">
+            <div class="center-top">
+                <textarea id="code-editor" spellcheck="false" disabled># Connecting to Compute Cluster...</textarea>
+            </div>
+            <button id="btn-run" class="btn-run" onclick="runCode()" disabled>Execute Sequence (▶)</button>
+            <div class="center-bottom">
+                <pre id="console-output"><span class="system-msg">System Console Output...</span></pre>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Feedback & Progression -->
+        <div class="panel">
+            <h2>Telemetry & Feedback</h2>
+            <div id="feedback-status">Waiting for execution...</div>
+            <p>Attempts: <span id="attempt-count">0</span>/3</p>
+            
+            <button id="btn-next" onclick="nextExercise()" style="display:none;">Next Exercise >></button>
+            
+            <hr style="border-color: #333; margin: 20px 0;">
+            <p style="font-size: 0.8em; color: #888;">
+                <strong>The Architect's Rule:</strong> Assume all external data is malformed. Never use an O(n) search when an O(1) lookup exists. Never swallow an exception silently.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let pyodideReady = false;
+        let pyodide = null;
+        
+        let currentLevel = 0;
+        let attempts = 0;
+        let score = 0;
+
+        // --- EXERCISE DATABASE ---
+        const exercises = [
+            {
+                title: "Ex 1: The O(n) Bottleneck",
+                concept: "Data Structure Selection (Sets vs Lists)",
+                desc: "An LLM wrote a spell-checker. It searches for `word` inside a massive LIST of correctly spelled words. This is an O(n) operation. Re-write the code to cast `correct_words_list` into the correct data structure for O(1) lookups.",
+                initialCode: `correct_words_list = ["data", "science", "python", "ai", "society"] * 1000\n\n# Fix this line. Do not use a list.\nfast_dictionary = correct_words_list\n\ndef check_spelling(word):\n    return word in fast_dictionary\n\nprint("Is 'python' spelled correctly?", check_spelling("python"))`,
+                testLogic: `
+assert isinstance(fast_dictionary, set), "Validation Failed: fast_dictionary must be a SET for O(1) lookup times."
+assert check_spelling("ai") == True, "Validation Failed: 'ai' should return True"
+assert check_spelling("java") == False, "Validation Failed: 'java' should return False"
+`,
+                hint: "Checking `x in list` forces Python to scan the whole list. Checking `x in set` uses a hash table for instant lookups. Use `set(your_list)`.",
+                foodForThought: "If you needed to map words to their definitions (e.g., 'python': 'a snake'), which data structure would you use? (Hint: dicts also have O(1) lookups!). Change your set to a dictionary mapping words to lengths."
+            },
+            {
+                title: "Ex 2: The JSON Serialisation Trap",
+                concept: "File I/O & Data Parsing",
+                desc: "You are exporting data to an API. The LLM generated this JSON dump code, but it crashes because Python's `datetime` objects aren't JSON serialisable. Fix the assignment of `record['timestamp']` so `json.dumps()` works.",
+                initialCode: `import json\nimport datetime\n\nrecord = {\n    "id": 104,\n    "user": "ada_lovelace",\n    "timestamp": datetime.datetime(2025, 1, 15, 14, 30, 0)\n}\n\n# The bug is happening here due to the datetime object:\n# Fix the datetime format before serialising.\n\nexport_string = json.dumps(record)\nprint(export_string)`,
+                testLogic: `
+assert type(export_string) is str, "Validation Failed: Did not produce a JSON string."
+assert "2025-01-15T14:30:00" in export_string, "Validation Failed: You must convert the datetime object to an ISO formatted string."
+`,
+                hint: "You cannot pass a raw datetime object to json.dumps(). Convert it to an ISO 8601 string first by calling `.isoformat()` on the datetime object, e.g., `record['timestamp'] = record['timestamp'].isoformat()`.",
+                foodForThought: "What happens when you read that JSON string back in using `json.loads()`? It remains a string! JSON has no native datetime type. You must manually parse it back into a datetime object upon ingestion."
+            },
+            {
+                title: "Ex 3: The Silent Failure",
+                concept: "Professional Exception Handling",
+                desc: "This LLM code uses the WORST pattern: a bare `except:` that silently swallows ALL errors and returns `None`. Modify the try/except block to catch ONLY a `KeyError` (returning 'Missing'). Do NOT catch the `TypeError`.",
+                initialCode: `def process_record(record):\n    try:\n        # Expects a dict like {"value": 10}\n        return record["value"] * 2\n    except:\n        return None\n\nprint("Valid:", process_record({"value": 10}))\nprint("Missing Key:", process_record({"wrong_key": 5}))\n# The next line SHOULD crash with a TypeError, but the bad exception swallows it!\nprint("Bad Type:", process_record({"value": "five"}))`,
+                testLogic: `
+import ast, inspect
+
+source = inspect.getsource(process_record)
+assert "except:" not in source and "except Exception:" not in source, "Validation Failed: You are still using a bare/broad except!"
+assert "except KeyError:" in source, "Validation Failed: You must specifically catch KeyError."
+
+assert process_record({"value": 10}) == 20
+assert process_record({"wrong_key": 5}) == 'Missing'
+
+try:
+    process_record({"value": "five"})
+    raise AssertionError("Validation Failed: You swallowed the TypeError! It should have crashed.")
+except TypeError:
+    pass # This is exactly what we want to happen!
+`,
+                hint: "Change `except:` to `except KeyError:`. Then change `return None` to `return 'Missing'`. Never use a bare `except:` because it hides bugs like multiplying a string by a number.",
+                foodForThought: "Try adding `except TypeError:` below your `KeyError` block to catch the string issue specifically, perhaps logging a warning and returning 0. Pattern 2 from the lecture: Catch, log, and continue."
+            },
+            {
+                title: "Ex 4: The Architect's Schema",
+                concept: "Validation Schemas",
+                desc: "Write a validation function `is_valid` that checks a dictionary against two rules: 'age' MUST be an integer, and 'age' MUST be >= 18. Return True if valid, False otherwise.",
+                initialCode: `def is_valid(record):\n    age = record.get("age")\n    \n    # Implement your type checking and value checking here:\n    \n    return True\n\nprint("Test 1 (Valid):", is_valid({"age": 21}))\nprint("Test 2 (Too young):", is_valid({"age": 16}))\nprint("Test 3 (Wrong type):", is_valid({"age": "21"}))`,
+                testLogic: `
+assert is_valid({"age": 21}) == True, "Validation Failed: 21 should be True"
+assert is_valid({"age": 16}) == False, "Validation Failed: 16 should be False"
+assert is_valid({"age": "21"}) == False, "Validation Failed: '21' (string) should be False"
+assert is_valid({"name": "Bob"}) == False, "Validation Failed: Missing 'age' entirely should be False"
+`,
+                hint: "First, check if `age is None`. Second, use `isinstance(age, int)` to check the type. Finally, check if `age >= 18`.",
+                foodForThought: "In a real DAIS pipeline, we wouldn't write this from scratch. We would use the Pydantic library. But understanding how Pydantic works under the hood (type checking + constraint checking) makes you a master of data ingestion."
+            }
+        ];
+
+        // --- INITIALIZATION ---
+        async function initPyodide() {
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">Booting CPython Virtual Machine...</span>';
+            pyodide = await loadPyodide({
+                stdout: (text) => {
+                    const out = document.getElementById('console-output');
+                    out.innerHTML += text + '\n';
+                },
+                stderr: (text) => {
+                    const out = document.getElementById('console-output');
+                    out.innerHTML += '<span style="color:var(--danger)">' + text + '</span>\n';
+                }
+            });
+            pyodideReady = true;
+            document.getElementById('code-editor').disabled = false;
+            document.getElementById('btn-run').disabled = false;
+            loadExercise(0);
+        }
+
+        // --- GAME LOGIC ---
+        function loadExercise(index) {
+            currentLevel = index;
+            attempts = 0;
+            const ex = exercises[index];
+            
+            document.getElementById('ex-title').innerText = ex.title;
+            document.getElementById('ex-concept').innerText = ex.concept;
+            document.getElementById('ex-desc').innerText = ex.desc;
+            document.getElementById('code-editor').value = ex.initialCode;
+            
+            document.getElementById('attempt-count').innerText = attempts;
+            document.getElementById('console-output').innerHTML = '<span class="system-msg">Environment ready. Awaiting execution.</span>\n';
+            document.getElementById('feedback-status').className = 'status';
+            document.getElementById('feedback-status').innerText = 'Analyze the code and execute when ready.';
+            
+            document.getElementById('btn-hint').disabled = false;
+            document.getElementById('hint-box').style.display = 'none';
+            document.getElementById('food-box').style.display = 'none';
+            document.getElementById('btn-next').style.display = 'none';
+            document.getElementById('btn-run').style.display = 'block';
+        }
+
+        async function runCode() {
+            if (!pyodideReady) return;
+            
+            attempts++;
+            document.getElementById('attempt-count').innerText = attempts;
+            const userCode = document.getElementById('code-editor').value;
+            const testCode = exercises[currentLevel].testLogic;
+            
+            // Clear console
+            document.getElementById('console-output').innerHTML = '';
+            const feedbackBox = document.getElementById('feedback-status');
+
+            try {
+                // Run user code first to generate their console output
+                await pyodide.runPythonAsync(userCode);
+                
+                // Run hidden test logic
+                await pyodide.runPythonAsync(userCode + '\n' + testCode);
+                
+                // Success!
+                handleSuccess(feedbackBox);
+
+            } catch (err) {
+                // Catch Tracebacks and Assertion Errors
+                let errorMsg = err.message;
+                
+                // Strip out the giant pyodide stack trace, keep the Python traceback
+                const pythonTraceback = errorMsg.split('File "<exec>"').pop();
+                if(pythonTraceback) {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">Traceback (most recent call last):\n  File "main.py"' + pythonTraceback + '</span>\n';
+                } else {
+                    document.getElementById('console-output').innerHTML += '<span style="color:var(--danger)">' + errorMsg + '</span>\n';
+                }
+
+                handleFailure(feedbackBox, errorMsg);
+            }
+        }
+
+        function handleSuccess(feedbackBox) {
+            feedbackBox.className = 'status success';
+            feedbackBox.innerHTML = '<strong>Validation Passed!</strong> Architectural constraints met.';
+            
+            if(attempts <= 3) score += 100;
+            document.getElementById('score').innerText = score;
+            
+            document.getElementById('food-box').style.display = 'block';
+            document.getElementById('ex-food').innerText = exercises[currentLevel].foodForThought;
+            
+            document.getElementById('btn-run').style.display = 'none';
+            
+            if (currentLevel < exercises.length - 1) {
+                document.getElementById('btn-next').style.display = 'block';
+            } else {
+                feedbackBox.innerHTML += '<br><br><strong>Module Complete.</strong> You are prepared for the Messy CSV Lab Challenge.';
+            }
+        }
+
+        function handleFailure(feedbackBox, errorMsg) {
+            feedbackBox.className = 'status error';
+            if (errorMsg.includes('AssertionError')) {
+                feedbackBox.innerHTML = '<strong>Logic Error:</strong> Your code ran, but failed the strict Validation Schema checks. Read the assertion in the console.';
+            } else {
+                feedbackBox.innerHTML = '<strong>Execution Error:</strong> Pipeline crashed. Read the Traceback bottom-up to identify the bug.';
+            }
+
+            if (attempts >= 3) {
+                feedbackBox.innerHTML += '<br><br><em>Maximum initial attempts reached. You may proceed to the next unit, or keep debugging.</em>';
+                if (currentLevel < exercises.length - 1) {
+                    document.getElementById('btn-next').style.display = 'block';
+                }
+            }
+        }
+
+        function showHint() {
+            document.getElementById('hint-box').style.display = 'block';
+            document.getElementById('hint-box').innerText = "Hint: " + exercises[currentLevel].hint;
+            document.getElementById('btn-hint').disabled = true;
+        }
+
+        function nextExercise() {
+            if (currentLevel < exercises.length - 1) {
+                loadExercise(currentLevel + 1);
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            loadExercise(0);
+        }
+
+        // Start booting Pyodide on load
+        window.onload = initPyodide;
+
+    </script>
+</body>
+</html>
